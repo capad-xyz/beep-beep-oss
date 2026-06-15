@@ -1,0 +1,43 @@
+# Secrets / environment
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# Matrix / bridge runtime data (never commit homeserver/bridge state)
+data/
+*.db
+*.db-shm
+*.db-wal
+*.log
+homeserver.signing.key
+*.registration.yaml
+config.yaml
+!config.example.yaml
+
+# Rust
+/target/
+**/target/
+Cargo.lock.bak
+*.pdb
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.local
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp

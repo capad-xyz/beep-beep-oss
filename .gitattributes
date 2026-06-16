@@ -1,0 +1,6 @@
+# Shell scripts and Makefiles run inside Linux containers, where CRLF line
+# endings break the `#!/bin/bash` shebang ("/bin/bash^M: bad interpreter").
+# Force LF on checkout regardless of the contributor's core.autocrlf setting.
+*.sh    text eol=lf
+Makefile text eol=lf
+Caddyfile* text eol=lf

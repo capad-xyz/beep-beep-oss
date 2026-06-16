@@ -1,0 +1,31 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Caddy reverse proxy — only used on the PUBLIC / Oracle path.
+#
+# Copy to "Caddyfile" (no extension) before running the "public" profile:
+#     cp Caddyfile.example Caddyfile
+#
+# Caddy reads SERVER_NAME from the environment and automatically obtains +
+# renews a free Let's Encrypt TLS certificate for it. You get HTTPS with zero
+# manual cert work — as long as ports 80 and 443 are reachable from the internet
+# and SERVER_NAME's DNS points at this server.
+# ─────────────────────────────────────────────────────────────────────────────
+
+{$SERVER_NAME} {
+    # Matrix client-server API + Synapse client endpoints
+    reverse_proxy /_matrix/* synapse:8008
+    reverse_proxy /_synapse/client/* synapse:8008
+
+    # ── .well-known delegation ───────────────────────────────────────────────
+    # Lets Matrix clients and other servers discover this homeserver from the
+    # bare domain. Handy even for a single-server Phase 0 setup.
+    handle /.well-known/matrix/client {
+        header Content-Type application/json
+        header Access-Control-Allow-Origin *
+        respond `{"m.homeserver": {"base_url": "https://{$SERVER_NAME}"}}`
+    }
+
+    handle /.well-known/matrix/server {
+        header Content-Type application/json
+        respond `{"m.server": "{$SERVER_NAME}:443"}`
+    }
+}

@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# beep-beep-oss — Phase 0 stack
+#
+# Goal of Phase 0: prove the thesis — instant (no-delay) sync + multi-account
+# WhatsApp — on a real Matrix homeserver with a real bridge.
+#
+# Services:
+#   postgres          → the database for both Synapse and the bridge
+#   synapse           → the Matrix homeserver (native Simplified Sliding Sync)
+#   mautrix-whatsapp  → the WhatsApp <-> Matrix bridge (bridgev2)
+#   caddy             → (optional, "public" profile) TLS reverse proxy for the
+#                       always-on / Oracle path. Not started for local testing.
+#
+# All images are multi-arch (amd64 + arm64), so this runs on a normal x86 VPS
+# AND on Oracle Cloud's free Ampere A1 (ARM) instances unchanged.
+#
+# See SETUP.md for the exact step-by-step (local path and Oracle free path).
+# ─────────────────────────────────────────────────────────────────────────────
+name: beep-beep-phase0
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # Synapse can be write-heavy; give Postgres a little shared memory.
+    shm_size: 256mb
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-beep}
+      # No default — refuse to start if you haven't set a password in .env
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      # Runs ONCE on first boot to create the two app databases with the exact
+      # locale Synapse requires (LC_COLLATE/LC_CTYPE = C).
+      - ./postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-beep}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  synapse:
+    image: ghcr.io/element-hq/synapse:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SYNAPSE_SERVER_NAME: ${SERVER_NAME:?set SERVER_NAME in .env}
+      SYNAPSE_REPORT_STATS: "no"
+    volumes:
+      - ./data/synapse:/data
+    ports:
+      # LOCAL path: bound to 127.0.0.1 so it is NOT exposed to the internet.
+      # PUBLIC path: leave this as-is — Caddy reaches Synapse over the internal
+      # docker network, not via this host port.
+      - "${SYNAPSE_BIND:-127.0.0.1:8008}:8008"
+
+  mautrix-whatsapp:
+    image: dock.mau.dev/mautrix/whatsapp:latest
+    restart: unless-stopped
+    depends_on:
+      synapse:
+        condition: service_started
+    volumes:
+      - ./data/mautrix-whatsapp:/data
+    # The bridge's appservice port (29318) intentionally stays on the internal
+    # docker network only — Synapse talks to it by container name. It must never
+    # be exposed publicly.
+
+  # Optional TLS reverse proxy. Only starts when you run with:
+  #   docker compose --profile public up -d
+  # Caddy automatically obtains + renews a Let's Encrypt certificate for
+  # SERVER_NAME, so the "public/Oracle" path gets HTTPS for free.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["public"]
+    restart: unless-stopped
+    depends_on:
+      - synapse
+    environment:
+      SERVER_NAME: ${SERVER_NAME:?set SERVER_NAME in .env}
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy/data:/data
+      - ./data/caddy/config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3

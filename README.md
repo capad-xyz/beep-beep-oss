@@ -54,8 +54,12 @@ reasoning behind each decision.
 
 ## Project status
 
-🚧 **Pre-alpha — foundation.** No runnable app yet. We're validating the core
-thesis (instant sync, multi-account WhatsApp) before building the client.
+🚧 **Pre-alpha — Phase 0.** The client isn't built yet; we're validating the core
+thesis (instant sync, multi-account WhatsApp) on real infrastructure first.
+
+➡️ **Want to run it?** The Phase 0 stack (Synapse + WhatsApp bridge) lives in
+[`infra/`](infra/), with a step-by-step in **[SETUP.md](SETUP.md)** — including a
+fully free path on Oracle Cloud's Always Free tier.
 
 **Roadmap**
 

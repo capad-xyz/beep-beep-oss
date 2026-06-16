@@ -6,16 +6,22 @@
 *.pem
 secrets/
 
-# Matrix / bridge runtime data (never commit homeserver/bridge state)
+# Matrix / bridge runtime data & generated config (never commit — contains secrets)
 data/
+infra/data/
+infra/caddy/Caddyfile          # generated from Caddyfile.example
+infra/**/homeserver.yaml
+infra/**/registration.yaml
 *.db
 *.db-shm
 *.db-wal
 *.log
+*.signing.key
 homeserver.signing.key
 *.registration.yaml
 config.yaml
 !config.example.yaml
+!*.example.yaml
 
 # Rust
 /target/

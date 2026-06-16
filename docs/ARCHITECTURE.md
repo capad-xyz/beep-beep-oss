@@ -64,8 +64,8 @@ network** as the default.
 
 | Network | Bridge | Risk | Decision |
 |---------|--------|------|----------|
-| WhatsApp | `mautrix-whatsapp` (whatsmeow) | **Low** — links as an official companion device | Priority network; safe for SaaS. |
-| Instagram | `mautrix-meta` | **Higher** — unofficial API; Meta runs ban waves (e.g. May 2026) | **Self-host-only in v1.** Heavy rate-limiting + explicit user warning. Keep off SaaS infra early to protect IP reputation. |
+| WhatsApp | `mautrix-whatsapp` (whatsmeow) | **Low** — links as an official companion device | Priority network; first-class in OSS + SaaS. |
+| Instagram | `mautrix-meta` | **Moderate** — unofficial API; Meta runs periodic ban waves | **First-class network** (OSS + SaaS), built normally with full features. Surface honest history/risk warnings to users. Apply sensible rate-limiting, but do not treat as second-class — Beeper ships Instagram, and so do we. |
 
 ## 6. Push notifications (a known self-host pain point)
 
@@ -77,18 +77,42 @@ Instant sync is undermined if notifications lag. This is explicitly in scope.
 - **Strategy:** managed, reliable, all-platform push is a strong **SaaS value-add**,
   since self-hosters consistently struggle with it.
 
-## 7. OSS / SaaS boundary (provisional)
+## 7. OSS / SaaS boundary
 
-The boundary is drawn to keep the client fully open and trustworthy while leaving room
-for a sustainable hosted business. **To be finalized.**
+**Guiding principle: monetize the *operational burden*, never the *features*.** The
+software is fully free and the client works against any homeserver. Revenue comes from
+running the 24/7 infrastructure, not from unlocking capabilities.
 
-- **Open source (AGPL-3.0):** the client app, bridge configs/orchestration, self-host
-  docs, sliding-sync-tuned setup. The client always works against any homeserver.
-- **SaaS / managed (candidates):** hosted homeserver + managed bridges, all-platform
-  push relay, billing, iMessage relay infra, abuse/ops tooling.
+**Two non-negotiable rules (they define the brand):**
+1. The client is 100% OSS and homeserver-agnostic, forever.
+2. **Sync speed is never throttled — not even on a free SaaS tier.** If a free tier
+   ever needs limits, cap *number of bridges* or *retention*, never *speed*.
+
+**The boundary:**
+
+| Capability | OSS (AGPL-3.0) | SaaS (paid) |
+|---|---|---|
+| Client app (desktop + mobile) | ✅ always | same app, points at our servers |
+| Self-host docs + docker-compose | ✅ | — |
+| Bridges (mautrix) | ✅ (already AGPL) | run for the user |
+| Homeserver | ✅ DIY | ✅ managed: backups, uptime, updates |
+| Push notifications | ✅ DIY (Sygnal/UnifiedPush) | ✅ reliable all-platform incl. iOS APNs |
+| Instagram | ✅ first-class | ✅ first-class |
+| iMessage relay | — | ✅ SaaS-only (needs Mac infra) |
+| **Functional** bridge-ops dashboard | ✅ self-hosters get a real, working dashboard | — |
+| **Multi-tenant / billing / fleet-scale ops** layer | — | ✅ proprietary (the moat) |
+
+**Open-core line (resolved):** Everything an *individual self-hoster* needs is open —
+including a fully functional bridge-management/health dashboard. Only the code that
+exists *purely to operate a hosting business at scale* (multi-tenancy, billing,
+fleet observability, auto-scaling) is proprietary. No *user-facing feature* is ever
+closed. This mirrors Mastodon / GitLab CE-EE / Element.
+
+**Pricing / free-tier:** deferred. Only fixed constraint: speed is never the lever.
+
 - **Licensing for dual model:** retain copyright ownership (contributor license
-  agreement / CLA) so a managed version can be offered. Decide CLA setup before the
-  first external contributor.
+  agreement / CLA) so the managed/proprietary layer can be offered. Decide CLA setup
+  before the first external contributor.
 
 ## 8. Roadmap
 
@@ -103,6 +127,6 @@ for a sustainable hosted business. **To be finalized.**
 ## 9. Open questions
 
 - Exact multi-login UX in current `mautrix-whatsapp` (`bridgev2`) — verify in Phase 0.
-- Final OSS/SaaS feature split (§7).
+- SaaS pricing / free-tier shape (deferred; speed never throttled).
 - CLA tooling and process.
 - Synapse vs Tuwunel benchmark once load matters.

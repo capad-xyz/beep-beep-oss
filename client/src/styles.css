@@ -1,0 +1,111 @@
+:root {
+  font-family: system-ui, -apple-system, sans-serif;
+  color: #e7e7ea;
+  background: #16161a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding-top: 4rem;
+}
+
+.muted {
+  color: #8a8a93;
+}
+
+.error {
+  color: #ff6b6b;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 320px;
+  margin-top: 1rem;
+  padding: 1.25rem;
+  background: #1f1f25;
+  border-radius: 12px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: #b6b6bf;
+}
+
+input {
+  padding: 0.5rem;
+  border: 1px solid #33333c;
+  border-radius: 8px;
+  background: #121216;
+  color: inherit;
+}
+
+button {
+  padding: 0.5rem 0.9rem;
+  border: 0;
+  border-radius: 8px;
+  background: #5b6cff;
+  color: white;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid #2a2a31;
+}
+
+.topbar button {
+  margin-left: 0.5rem;
+  background: #2a2a31;
+}
+
+.rooms {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+}
+
+.room {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.7rem 0.5rem;
+  border-bottom: 1px solid #222229;
+}
+
+.badge {
+  background: #5b6cff;
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.75rem;
+}

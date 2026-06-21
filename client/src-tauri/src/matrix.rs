@@ -187,3 +187,25 @@ pub async fn room_messages(
     lines.reverse();
     Ok(lines)
 }
+
+/// Send a plain-text message to a room.
+#[tauri::command]
+pub async fn send_message(
+    state: tauri::State<'_, MatrixState>,
+    room_id: String,
+    body: String,
+) -> Result<(), String> {
+    use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+    use matrix_sdk::ruma::RoomId;
+
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("not logged in")?;
+
+    let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
+    let room = client.get_room(&rid).ok_or("room not found")?;
+
+    room.send(RoomMessageEventContent::text_plain(body))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

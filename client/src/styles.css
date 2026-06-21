@@ -148,3 +148,6 @@ button:disabled { opacity: 0.6; cursor: default; }
 .msg.own { align-self: flex-end; background: var(--accent); border-color: transparent; }
 .msg-sender { font-size: 0.7rem; color: var(--muted); }
 .msg-body { white-space: pre-wrap; word-break: break-word; }
+
+.composer { display: flex; gap: 0.5rem; padding: 0.75rem 0.25rem; position: sticky; bottom: 0; background: #0f0f13; border-top: 1px solid var(--border); }
+.composer input { flex: 1; }

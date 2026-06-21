@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { login, listRooms, logout, roomMessages } from "./api";
+import { login, listRooms, logout, roomMessages, sendMessage } from "./api";
 import type { RoomSummary } from "./bindings/RoomSummary";
 import type { ChatLine } from "./bindings/ChatLine";
 
@@ -47,6 +47,7 @@ export default function App() {
   const [openRoom, setOpenRoom] = useState<RoomSummary | null>(null);
   const [messages, setMessages] = useState<ChatLine[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  const [draft, setDraft] = useState("");
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -90,6 +91,20 @@ export default function App() {
       setError(String(err));
     } finally {
       setLoadingMsgs(false);
+    }
+  }
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault();
+    const body = draft.trim();
+    if (!openRoom || !body) return;
+    setDraft("");
+    try {
+      await sendMessage(openRoom.id, body);
+      await openConversation(openRoom);
+    } catch (err) {
+      setError(String(err));
+      setDraft(body);
     }
   }
 
@@ -150,6 +165,14 @@ export default function App() {
             );
           })}
         </div>
+        <form className="composer" onSubmit={handleSend}>
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Type a message…"
+          />
+          <button type="submit" disabled={!draft.trim()}>Send</button>
+        </form>
       </div>
     );
   }

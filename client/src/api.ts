@@ -31,3 +31,8 @@ export async function logout(): Promise<void> {
 export async function roomMessages(roomId: string, limit = 50): Promise<ChatLine[]> {
   return invoke<ChatLine[]>("room_messages", { roomId, limit });
 }
+
+/** Send a plain-text message to a room. */
+export async function sendMessage(roomId: string, body: string): Promise<void> {
+  return invoke<void>("send_message", { roomId, body });
+}

@@ -3,4 +3,9 @@
 /**
  * One message line, flattened for the conversation view (reused by the AI layer).
  */
-export type ChatLine = { sender: string, body: string, };
+export type ChatLine = { sender: string, body: string, 
+/**
+ * Milliseconds since the Unix epoch (origin_server_ts). f64 so it maps to a
+ * plain TS `number` for `new Date(ts)` — u64 would surface as `bigint`.
+ */
+ts: number, };

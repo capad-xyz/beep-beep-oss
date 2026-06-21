@@ -174,6 +174,9 @@ pub async fn logout(state: tauri::State<'_, MatrixState>) -> Result<(), String> 
 pub struct ChatLine {
     pub sender: String,
     pub body: String,
+    /// Milliseconds since the Unix epoch (origin_server_ts). f64 so it maps to a
+    /// plain TS `number` for `new Date(ts)` — u64 would surface as `bigint`.
+    pub ts: f64,
 }
 
 /// Fetch the most recent `limit` text messages from a room, oldest-first - the
@@ -212,6 +215,7 @@ pub async fn room_messages(
                     return Some(ChatLine {
                         sender: original.sender.to_string(),
                         body: text.body.clone(),
+                        ts: u64::from(original.origin_server_ts.0) as f64,
                     });
                 }
             }

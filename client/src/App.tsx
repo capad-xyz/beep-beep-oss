@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { login, listRooms, logout, roomMessages, sendMessage } from "./api";
 import type { RoomSummary } from "./bindings/RoomSummary";
 import type { ChatLine } from "./bindings/ChatLine";
@@ -36,6 +36,11 @@ function shortSender(id: string): string {
   return id.replace(/^@/, "").split(":")[0];
 }
 
+// origin_server_ts (ms) -> a short local clock time, e.g. "18:55".
+function formatTime(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function App() {
   const [homeserver, setHomeserver] = useState("http://localhost:8008");
   const [username, setUsername] = useState("");
@@ -49,6 +54,12 @@ export default function App() {
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  // Keep the conversation pinned to the newest message (on open + after send).
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView();
+  }, [messages]);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -162,9 +173,11 @@ export default function App() {
               <div key={i} className={own ? "msg own" : "msg"}>
                 {!own && <span className="msg-sender">{shortSender(m.sender)}</span>}
                 <span className="msg-body">{m.body}</span>
+                <span className="msg-time">{formatTime(m.ts)}</span>
               </div>
             );
           })}
+          <div ref={bottomRef} />
         </div>
         <form className="composer" onSubmit={handleSend}>
           <input

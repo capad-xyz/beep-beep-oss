@@ -165,9 +165,18 @@ export default function App() {
       if (alive) unlisten = fn;
       else fn();
     });
+    // Initial-sync catch-up: the first sync's "rooms-updated" can fire before the
+    // listener above attaches, so re-pull a few times over the first seconds
+    // after login. Combined with the live listener → no manual Refresh.
+    const timers = [1200, 3000, 6000].map((ms) =>
+      setTimeout(() => {
+        if (alive) refreshRooms();
+      }, ms)
+    );
     return () => {
       alive = false;
       unlisten?.();
+      timers.forEach(clearTimeout);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { login, listRooms, logout, roomMessages, sendMessage, roomAvatar } from "./api";
+import { login, listRooms, logout, roomMessages, sendMessage, roomAvatar, joinRoom } from "./api";
+import { listen } from "@tauri-apps/api/event";
 import type { RoomSummary } from "./bindings/RoomSummary";
 import type { ChatLine } from "./bindings/ChatLine";
 
@@ -152,6 +153,25 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openRoom]);
 
+  // LIVE INBOX: the backend emits "rooms-updated" after each sync touches a room;
+  // re-pull the list so the inbox updates itself — no manual Refresh.
+  useEffect(() => {
+    if (!userId) return;
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    listen("rooms-updated", () => {
+      refreshRooms();
+    }).then((fn) => {
+      if (alive) unlisten = fn;
+      else fn();
+    });
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -184,6 +204,16 @@ export default function App() {
   }
 
   async function openConversation(room: RoomSummary) {
+    // Invited (bridge "ghost") rooms can't be read until accepted — accept first.
+    if (room.membership === "invited") {
+      try {
+        await joinRoom(room.id);
+        await refreshRooms();
+      } catch (err) {
+        setError(String(err));
+        return;
+      }
+    }
     setOpenRoom(room);
     setMessages([]);
     setError(null);
@@ -357,16 +387,26 @@ export default function App() {
         )}
         {filtered.map((r) => {
           const label = displayName(r);
+          const joined = r.membership === "joined";
           return (
-            <li key={r.id} className="room" onClick={() => openConversation(r)}>
+            <li
+              key={r.id}
+              className={joined ? "room" : "room pending"}
+              onClick={() => openConversation(r)}
+            >
               <RoomAvatar id={r.id} label={label} />
               <div className="room-main">
                 <span className="room-name">{label}</span>
-                {r.last_message && <span className="room-preview">{r.last_message}</span>}
+                {!joined ? (
+                  <span className="room-preview">Tap to accept invite</span>
+                ) : (
+                  r.last_message && <span className="room-preview">{r.last_message}</span>
+                )}
               </div>
               <div className="room-meta">
-                {r.last_ts != null && <span className="room-time">{relTime(r.last_ts)}</span>}
-                {r.unread > 0 && <span className="badge">{Number(r.unread)}</span>}
+                {!joined && <span className="badge invite">Invite</span>}
+                {joined && r.last_ts != null && <span className="room-time">{relTime(r.last_ts)}</span>}
+                {joined && r.unread > 0 && <span className="badge">{Number(r.unread)}</span>}
               </div>
             </li>
           );

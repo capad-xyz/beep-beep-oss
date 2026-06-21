@@ -14,10 +14,12 @@
 //! tweak are marked with `// VERIFY:`.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use matrix_sdk::{ruma::OwnedUserId, Client};
 use matrix_sdk_ui::sync_service::SyncService;
 use serde::{Deserialize, Serialize};
+use tauri::Emitter;
 use tokio::sync::RwLock;
 use ts_rs::TS;
 
@@ -50,6 +52,11 @@ pub struct RoomSummary {
     /// Whether this room is a bridged chat. Placeholder for now; a real
     /// implementation inspects room state for the bridge's marker events.
     pub is_bridged: bool,
+    /// Our membership: "joined" | "invited" | "left" | "knocked" | "banned".
+    /// The mautrix bridge invites us into each WhatsApp portal and waits for us
+    /// to accept, so many real chats start "invited" — the UI dims those + offers
+    /// Accept instead of opening into a 403. Derived from room.state().
+    pub membership: String,
     /// Preview of the most recent text message, if any.
     pub last_message: Option<String>,
     /// Timestamp (ms since epoch) of that latest message — drives recency sort
@@ -64,6 +71,7 @@ pub struct RoomSummary {
 #[tauri::command]
 pub async fn login(
     state: tauri::State<'_, MatrixState>,
+    app: tauri::AppHandle,
     homeserver: String,
     username: String,
     password: String,
@@ -97,6 +105,35 @@ pub async fn login(
     sync_service.start().await;
     *state.sync_service.write().await = Some(Arc::new(sync_service));
 
+    // LIVE INBOX: emit "rooms-updated" whenever a sync touches a room, so the
+    // frontend re-pulls the room list with no manual Refresh. Debounced (300ms)
+    // so a burst of sync updates collapses into a single refresh.
+    {
+        let app = app.clone();
+        let mut updates = client.subscribe_to_all_room_updates();
+        tauri::async_runtime::spawn(async move {
+            loop {
+                match updates.recv().await {
+                    Ok(_) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+                // Coalesce anything that arrives within 300ms into this tick.
+                loop {
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_millis(300)) => break,
+                        r = updates.recv() => match r {
+                            Ok(_) => continue,
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+                        },
+                    }
+                }
+                let _ = app.emit("rooms-updated", ());
+            }
+        });
+    }
+
     *state.client.write().await = Some(client);
     Ok(user_id.to_string())
 }
@@ -106,6 +143,8 @@ pub async fn login(
 pub async fn list_rooms(
     state: tauri::State<'_, MatrixState>,
 ) -> Result<Vec<RoomSummary>, String> {
+    use matrix_sdk::RoomState;
+
     let guard = state.client.read().await;
     let client = guard.as_ref().ok_or("not logged in")?;
 
@@ -121,11 +160,20 @@ pub async fn list_rooms(
             Some((body, ts)) => (Some(body), Some(ts)),
             None => (None, None),
         };
+        let membership = match room.state() {
+            RoomState::Joined => "joined",
+            RoomState::Invited => "invited",
+            RoomState::Left => "left",
+            RoomState::Knocked => "knocked",
+            RoomState::Banned => "banned",
+        }
+        .to_string();
         rooms.push(RoomSummary {
             id: room.room_id().to_string(),
             name,
             unread: room.unread_notification_counts().notification_count,
             is_bridged: false,
+            membership,
             last_message,
             last_ts,
         });
@@ -215,6 +263,13 @@ pub async fn room_messages(
 
     let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
     let room = client.get_room(&rid).ok_or("room not found")?;
+
+    // We can only read history for joined rooms. The bridge leaves WhatsApp
+    // portals "invited" until accepted; /messages on those 403s. Return empty so
+    // the conversation shows its normal empty state, not an error banner.
+    if room.state() != matrix_sdk::RoomState::Joined {
+        return Ok(Vec::new());
+    }
 
     let mut opts = MessagesOptions::backward();
     opts.limit = (limit as u32).into();
@@ -330,4 +385,24 @@ pub async fn room_avatar(
     // Browsers content-sniff <img> data regardless of the declared MIME, so a
     // jpeg label works even when the source is PNG/WebP.
     Ok(bytes.map(|b| format!("data:image/jpeg;base64,{}", STANDARD.encode(&b))))
+}
+
+/// Accept a pending invite (or re-join a left room). The mautrix bridge invites
+/// us into each WhatsApp portal; the inbox surfaces those as "invited" rows whose
+/// Accept action calls this. After it returns, reload the list / open the room.
+#[tauri::command]
+pub async fn join_room(
+    state: tauri::State<'_, MatrixState>,
+    room_id: String,
+) -> Result<(), String> {
+    use matrix_sdk::ruma::RoomId;
+
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("not logged in")?;
+
+    let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
+    let room = client.get_room(&rid).ok_or("room not found")?;
+
+    room.join().await.map_err(|e| e.to_string())?;
+    Ok(())
 }

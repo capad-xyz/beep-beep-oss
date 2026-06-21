@@ -125,6 +125,8 @@ button:disabled { opacity: 0.6; cursor: default; }
 .room-preview { font-size: 0.8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-meta { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; }
 .room-time { font-size: 0.7rem; color: var(--muted); white-space: nowrap; }
+.room.pending { opacity: 0.72; }
+.badge.invite { background: #e6a23c; color: #1a1a1a; }
 .badge {
   flex: 0 0 auto;
   min-width: 20px;

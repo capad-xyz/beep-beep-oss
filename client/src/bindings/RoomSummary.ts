@@ -15,6 +15,13 @@ export type RoomSummary = { id: string, name: string | null, unread: bigint,
  */
 is_bridged: boolean, 
 /**
+ * Our membership: "joined" | "invited" | "left" | "knocked" | "banned".
+ * The mautrix bridge invites us into each WhatsApp portal and waits for us
+ * to accept, so many real chats start "invited" — the UI dims those + offers
+ * Accept instead of opening into a 403. Derived from room.state().
+ */
+membership: string, 
+/**
  * Preview of the most recent text message, if any.
  */
 last_message: string | null, 

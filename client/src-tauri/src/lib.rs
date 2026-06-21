@@ -22,6 +22,17 @@ use matrix::MatrixState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // The window can open minimized if focus shifts during a (long) dev
+        // build — force it visible + focused on startup so it never gets lost.
+        .setup(|app| {
+            use tauri::Manager;
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.unminimize();
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+            Ok(())
+        })
         // Shared holder for the logged-in Matrix client (see matrix.rs).
         .manage(MatrixState::default())
         // TEMP(ai): re-enable with AI
@@ -35,6 +46,7 @@ pub fn run() {
             matrix::room_messages,
             matrix::send_message,
             matrix::room_avatar,
+            matrix::join_room,
             // TEMP(ai): re-enable with AI
             // ai::ai_set_provider,
             // ai::ai_active_provider,

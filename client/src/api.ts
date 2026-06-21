@@ -41,3 +41,8 @@ export async function sendMessage(roomId: string, body: string): Promise<void> {
 export async function roomAvatar(roomId: string): Promise<string | null> {
   return invoke<string | null>("room_avatar", { roomId });
 }
+
+/** Accept a pending invite (or re-join a left room). */
+export async function joinRoom(roomId: string): Promise<void> {
+  return invoke<void>("join_room", { roomId });
+}

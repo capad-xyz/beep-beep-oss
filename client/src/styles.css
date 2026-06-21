@@ -117,7 +117,9 @@ button:disabled { opacity: 0.6; cursor: default; }
   color: white;
   font-size: 0.85rem;
   font-weight: 700;
+  overflow: hidden;
 }
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
 .room-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.1rem; }
 .room-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-preview { font-size: 0.8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

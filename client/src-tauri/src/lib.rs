@@ -34,6 +34,7 @@ pub fn run() {
             matrix::logout,
             matrix::room_messages,
             matrix::send_message,
+            matrix::room_avatar,
             // TEMP(ai): re-enable with AI
             // ai::ai_set_provider,
             // ai::ai_active_provider,

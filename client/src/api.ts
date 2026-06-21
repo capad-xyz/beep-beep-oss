@@ -36,3 +36,8 @@ export async function roomMessages(roomId: string, limit = 50): Promise<ChatLine
 export async function sendMessage(roomId: string, body: string): Promise<void> {
   return invoke<void>("send_message", { roomId, body });
 }
+
+/** Fetch a room's avatar as a data: URL, or null if it has none. */
+export async function roomAvatar(roomId: string): Promise<string | null> {
+  return invoke<string | null>("room_avatar", { roomId });
+}

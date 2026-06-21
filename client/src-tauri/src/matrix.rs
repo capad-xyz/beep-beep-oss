@@ -287,3 +287,42 @@ pub async fn send_message(
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+/// Lazily fetch a single room's avatar as a small thumbnail, returned as a
+/// `data:` URL ready to drop into an `<img src>`. Returns `None` when the room
+/// has no avatar set (most 1:1 WhatsApp DMs have one; some groups don't).
+///
+/// WHY LAZY: O(1) network per call, invoked per visible row from the frontend —
+/// NOT inside list_rooms, which would make room-list load O(rooms) downloads.
+/// `avatar()` passes use_cache=true, and the UI caches by room id, so repeats
+/// are cheap.
+#[tauri::command]
+pub async fn room_avatar(
+    state: tauri::State<'_, MatrixState>,
+    room_id: String,
+) -> Result<Option<String>, String> {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    use matrix_sdk::media::{MediaFormat, MediaThumbnailSettings};
+    use matrix_sdk::ruma::api::client::media::get_content_thumbnail::v3::Method;
+    use matrix_sdk::ruma::{uint, RoomId};
+
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("not logged in")?;
+
+    let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
+    let room = client.get_room(&rid).ok_or("room not found")?;
+
+    // Small, cropped, square thumbnail — fine for a 40px list avatar.
+    let settings = MediaThumbnailSettings::with_method(Method::Crop, uint!(96), uint!(96));
+
+    // `avatar()` returns Ok(None) on its own when the room has no avatar_url.
+    let bytes: Option<Vec<u8>> = room
+        .avatar(MediaFormat::Thumbnail(settings))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Browsers content-sniff <img> data regardless of the declared MIME, so a
+    // jpeg label works even when the source is PNG/WebP.
+    Ok(bytes.map(|b| format!("data:image/jpeg;base64,{}", STANDARD.encode(&b))))
+}

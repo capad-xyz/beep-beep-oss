@@ -29,6 +29,9 @@ matrix-sdk = { version = "0.18", features = ["e2e-encryption", "sqlite", "bundle
 # Generates TypeScript types from our Rust structs (keeps the boundary in sync).
 ts-rs = "12"
 
+# Base64-encodes avatar thumbnails into data: URLs for the webview (room_avatar).
+base64 = "0.22"
+
 # AI layer (Inbox Intelligence). One HTTP client serves every backend because
 # AMD (vLLM/ROCm), Qwen Cloud (DashScope), DeepSeek and OpenAI all expose the
 # SAME OpenAI-compatible API — so providers differ only by {base_url, model, key}.

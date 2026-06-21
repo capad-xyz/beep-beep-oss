@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { login, listRooms, logout, roomMessages, sendMessage } from "./api";
+import { login, listRooms, logout, roomMessages, sendMessage, roomAvatar } from "./api";
 import type { RoomSummary } from "./bindings/RoomSummary";
 import type { ChatLine } from "./bindings/ChatLine";
 
@@ -65,6 +65,61 @@ function relTime(ms: number): string {
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d`;
   return new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+// Session-lifetime cache of resolved avatar data: URLs, keyed by room id.
+// `null` = fetched but the room has no avatar (don't refetch); `undefined` = not fetched yet.
+const avatarCache = new Map<string, string | null>();
+const avatarInflight = new Map<string, Promise<string | null>>();
+
+// Inbox avatar: shows initials immediately, then swaps to the room's real
+// (WhatsApp) picture once room_avatar resolves. Fetches at most once per room id.
+function RoomAvatar({ id, label }: { id: string; label: string }) {
+  const [src, setSrc] = useState<string | null>(() => avatarCache.get(id) ?? null);
+
+  useEffect(() => {
+    let alive = true;
+    const cached = avatarCache.get(id);
+    if (cached !== undefined) {
+      setSrc(cached);
+      return;
+    }
+    let p = avatarInflight.get(id);
+    if (!p) {
+      p = roomAvatar(id)
+        .then((url) => {
+          avatarCache.set(id, url);
+          return url;
+        })
+        .catch(() => {
+          avatarCache.set(id, null);
+          return null;
+        })
+        .finally(() => {
+          avatarInflight.delete(id);
+        });
+      avatarInflight.set(id, p);
+    }
+    p.then((url) => {
+      if (alive) setSrc(url);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  if (src) {
+    return (
+      <span className="avatar">
+        <img src={src} alt="" />
+      </span>
+    );
+  }
+  return (
+    <span className="avatar" style={{ background: avatarColor(id) }}>
+      {initials(label)}
+    </span>
+  );
 }
 
 export default function App() {
@@ -304,9 +359,7 @@ export default function App() {
           const label = displayName(r);
           return (
             <li key={r.id} className="room" onClick={() => openConversation(r)}>
-              <span className="avatar" style={{ background: avatarColor(r.id) }}>
-                {initials(label)}
-              </span>
+              <RoomAvatar id={r.id} label={label} />
               <div className="room-main">
                 <span className="room-name">{label}</span>
                 {r.last_message && <span className="room-preview">{r.last_message}</span>}

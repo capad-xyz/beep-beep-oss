@@ -13,4 +13,8 @@ export type RoomSummary = { id: string, name: string | null, unread: bigint,
  * Whether this room is a bridged chat. Placeholder for now; a real
  * implementation inspects room state for the bridge's marker events.
  */
-is_bridged: boolean, };
+is_bridged: boolean, 
+/**
+ * Preview of the most recent text message, if any.
+ */
+last_message: string | null, };

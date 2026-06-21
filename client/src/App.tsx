@@ -219,7 +219,10 @@ export default function App() {
               <span className="avatar" style={{ background: avatarColor(r.id) }}>
                 {initials(label)}
               </span>
-              <span className="room-name">{label}</span>
+              <div className="room-main">
+                <span className="room-name">{label}</span>
+                {r.last_message && <span className="room-preview">{r.last_message}</span>}
+              </div>
               {r.unread > 0 && <span className="badge">{Number(r.unread)}</span>}
             </li>
           );

@@ -46,6 +46,8 @@ pub struct RoomSummary {
     /// Whether this room is a bridged chat. Placeholder for now; a real
     /// implementation inspects room state for the bridge's marker events.
     pub is_bridged: bool,
+    /// Preview of the most recent text message, if any.
+    pub last_message: Option<String>,
 }
 
 /// Log in with username + password and start syncing.
@@ -102,18 +104,50 @@ pub async fn list_rooms(
     let guard = state.client.read().await;
     let client = guard.as_ref().ok_or("not logged in")?;
 
-    let rooms = client
-        .rooms()
-        .into_iter()
-        .map(|room| RoomSummary {
+    let mut rooms = Vec::new();
+    for room in client.rooms() {
+        // Prefer the SDK's computed display name (covers DMs / bridged rooms that
+        // carry no m.room.name), falling back to the raw name.
+        let name = match room.display_name().await {
+            Ok(dn) => Some(dn.to_string()),
+            Err(_) => room.name(),
+        };
+        rooms.push(RoomSummary {
             id: room.room_id().to_string(),
-            name: room.name(),
+            name,
             unread: room.unread_notification_counts().notification_count,
             is_bridged: false,
-        })
-        .collect();
+            last_message: latest_text(&room).await,
+        });
+    }
 
     Ok(rooms)
+}
+
+/// Best-effort preview: the most recent text message in a room, if any.
+/// NOTE: this does a per-room history fetch, so it is O(rooms) network calls —
+/// fine for a local server, but Simplified Sliding Sync is the real fix.
+async fn latest_text(room: &matrix_sdk::Room) -> Option<String> {
+    use matrix_sdk::room::MessagesOptions;
+    use matrix_sdk::ruma::events::{
+        room::message::MessageType, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
+    };
+    let mut opts = MessagesOptions::backward();
+    opts.limit = 10u32.into();
+    let chunk = room.messages(opts).await.ok()?.chunk;
+    // `backward` yields newest-first, so the first text we hit is the latest.
+    for ev in chunk {
+        if let Ok(AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(msg))) =
+            ev.raw().deserialize()
+        {
+            if let Some(original) = msg.as_original() {
+                if let MessageType::Text(text) = &original.content.msgtype {
+                    return Some(text.body.clone());
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Log out and drop the client.

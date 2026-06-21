@@ -137,10 +137,16 @@ export default function App() {
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  // Latest open room, readable from the live-update listener without re-subscribing.
+  const openRoomRef = useRef<RoomSummary | null>(null);
+  openRoomRef.current = openRoom;
 
-  // Keep the conversation pinned to the newest message (on open + after send).
+  // Keep the conversation pinned to the newest message — but only when the list
+  // grows (open / new message), so a live re-fetch doesn't yank you mid-scroll.
+  const prevLenRef = useRef(0);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView();
+    if (messages.length > prevLenRef.current) bottomRef.current?.scrollIntoView();
+    prevLenRef.current = messages.length;
   }, [messages]);
 
   // Esc closes the open conversation (back to the inbox).
@@ -161,6 +167,10 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     listen("rooms-updated", () => {
       refreshRooms();
+      // If a conversation is open, re-pull its messages too, so bot replies +
+      // incoming messages appear live there as well (not just the inbox list).
+      const cur = openRoomRef.current;
+      if (cur) roomMessages(cur.id, 50).then(setMessages).catch(() => {});
     }).then((fn) => {
       if (alive) unlisten = fn;
       else fn();

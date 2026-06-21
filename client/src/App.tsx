@@ -60,6 +60,18 @@ function formatDay(ms: number): string {
   return new Date(ms).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
+// Compact relative time for inbox rows: "now" / "5m" / "3h" / "2d" / "Jun 16".
+function relTime(ms: number): string {
+  const mins = Math.floor((Date.now() - ms) / 60_000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  return new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 export default function App() {
   const [homeserver, setHomeserver] = useState("http://localhost:8008");
   const [username, setUsername] = useState("");
@@ -232,9 +244,9 @@ export default function App() {
   // ---- Inbox ----
   const totalUnread = rooms.reduce((sum, r) => sum + Number(r.unread), 0);
   const sorted = [...rooms].sort((a, b) => {
-    const au = a.unread > 0 ? 1 : 0;
-    const bu = b.unread > 0 ? 1 : 0;
-    if (au !== bu) return bu - au;
+    const at = a.last_ts ?? 0;
+    const bt = b.last_ts ?? 0;
+    if (at !== bt) return bt - at; // most recent activity first
     return displayName(a).localeCompare(displayName(b));
   });
   const q = query.trim().toLowerCase();
@@ -293,7 +305,10 @@ export default function App() {
                 <span className="room-name">{label}</span>
                 {r.last_message && <span className="room-preview">{r.last_message}</span>}
               </div>
-              {r.unread > 0 && <span className="badge">{Number(r.unread)}</span>}
+              <div className="room-meta">
+                {r.last_ts != null && <span className="room-time">{relTime(r.last_ts)}</span>}
+                {r.unread > 0 && <span className="badge">{Number(r.unread)}</span>}
+              </div>
             </li>
           );
         })}

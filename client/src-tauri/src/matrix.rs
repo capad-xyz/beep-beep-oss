@@ -48,6 +48,9 @@ pub struct RoomSummary {
     pub is_bridged: bool,
     /// Preview of the most recent text message, if any.
     pub last_message: Option<String>,
+    /// Timestamp (ms since epoch) of that latest message — drives recency sort
+    /// and a relative "2m / 3h / Mon" label in the inbox. f64 → plain TS number.
+    pub last_ts: Option<f64>,
 }
 
 /// Log in with username + password and start syncing.
@@ -112,12 +115,17 @@ pub async fn list_rooms(
             Ok(dn) => Some(dn.to_string()),
             Err(_) => room.name(),
         };
+        let (last_message, last_ts) = match latest_message(&room).await {
+            Some((body, ts)) => (Some(body), Some(ts)),
+            None => (None, None),
+        };
         rooms.push(RoomSummary {
             id: room.room_id().to_string(),
             name,
             unread: room.unread_notification_counts().notification_count,
             is_bridged: false,
-            last_message: latest_text(&room).await,
+            last_message,
+            last_ts,
         });
     }
 
@@ -127,7 +135,7 @@ pub async fn list_rooms(
 /// Best-effort preview: the most recent text message in a room, if any.
 /// NOTE: this does a per-room history fetch, so it is O(rooms) network calls —
 /// fine for a local server, but Simplified Sliding Sync is the real fix.
-async fn latest_text(room: &matrix_sdk::Room) -> Option<String> {
+async fn latest_message(room: &matrix_sdk::Room) -> Option<(String, f64)> {
     use matrix_sdk::room::MessagesOptions;
     use matrix_sdk::ruma::events::{
         room::message::MessageType, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
@@ -142,7 +150,8 @@ async fn latest_text(room: &matrix_sdk::Room) -> Option<String> {
         {
             if let Some(original) = msg.as_original() {
                 if let MessageType::Text(text) = &original.content.msgtype {
-                    return Some(text.body.clone());
+                    let ts = u64::from(original.origin_server_ts.0) as f64;
+                    return Some((text.body.clone(), ts));
                 }
             }
         }

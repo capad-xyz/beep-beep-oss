@@ -17,4 +17,9 @@ is_bridged: boolean,
 /**
  * Preview of the most recent text message, if any.
  */
-last_message: string | null, };
+last_message: string | null, 
+/**
+ * Timestamp (ms since epoch) of that latest message — drives recency sort
+ * and a relative "2m / 3h / Mon" label in the inbox. f64 → plain TS number.
+ */
+last_ts: number | null, };

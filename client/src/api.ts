@@ -1,12 +1,12 @@
 // Typed wrappers around the Rust command surface (see src-tauri/src/matrix.rs).
 //
 // This is the ONLY place the frontend talks to the Rust core. Everything goes
-// through Tauri's `invoke()`, which serializes args to the Rust command and
-// deserializes the result back. The `RoomSummary` type is GENERATED from Rust by
-// ts-rs (see src/bindings/) — never edit that type by hand; regenerate it.
+// through Tauri's `invoke()`. The bound types are GENERATED from Rust by ts-rs
+// (see src/bindings/) — never edit those by hand; regenerate with `cargo test`.
 
 import { invoke } from "@tauri-apps/api/core";
 import type { RoomSummary } from "./bindings/RoomSummary";
+import type { ChatLine } from "./bindings/ChatLine";
 
 /** Log in to a homeserver. Returns the full Matrix user id (@you:server). */
 export async function login(
@@ -25,4 +25,9 @@ export async function listRooms(): Promise<RoomSummary[]> {
 /** Log out and drop the session. */
 export async function logout(): Promise<void> {
   return invoke<void>("logout");
+}
+
+/** Fetch recent text messages for a room, oldest-first. */
+export async function roomMessages(roomId: string, limit = 50): Promise<ChatLine[]> {
+  return invoke<ChatLine[]>("room_messages", { roomId, limit });
 }

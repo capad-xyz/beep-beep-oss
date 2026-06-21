@@ -130,3 +130,21 @@ button:disabled { opacity: 0.6; cursor: default; }
   color: white;
 }
 .empty { padding: 2rem 0.5rem; text-align: center; }
+
+/* ---------- Conversation ---------- */
+.convo-title { flex: 1; text-align: center; margin: 0 0.5rem; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.convo { display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem 0.25rem; }
+.msg {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-width: 78%;
+  padding: 0.45rem 0.7rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  align-self: flex-start;
+}
+.msg.own { align-self: flex-end; background: var(--accent); border-color: transparent; }
+.msg-sender { font-size: 0.7rem; color: var(--muted); }
+.msg-body { white-space: pre-wrap; word-break: break-word; }

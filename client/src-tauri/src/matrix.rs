@@ -38,7 +38,7 @@ pub struct MatrixState {
 /// gotcha we flagged when choosing this stack. The generated file lands in
 /// `../src/bindings/` and the frontend imports it. Regenerate via `cargo test`.
 #[derive(Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/bindings/")]
+#[ts(export, export_to = "../../src/bindings/")]
 pub struct RoomSummary {
     pub id: String,
     pub name: Option<String>,
@@ -134,66 +134,56 @@ pub async fn logout(state: tauri::State<'_, MatrixState>) -> Result<(), String> 
 // note in ai.rs).
 // ---------------------------------------------------------------------------
 
-// TEMP(ai): re-enable with AI — delete the `#[cfg(any())]` below
-/// One message line, flattened for prompting and display.
-#[cfg(any())]
-#[derive(Clone, Serialize, Deserialize)]
+/// One message line, flattened for the conversation view (reused by the AI layer).
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
 pub struct ChatLine {
     pub sender: String,
     pub body: String,
 }
 
-// TEMP(ai): re-enable with AI — delete the `#[cfg(any())]` below
-#[cfg(any())]
-impl MatrixState {
-    /// Pull the most recent `limit` text messages from a room, oldest-first.
-    ///
-    /// VERIFY: the timeline API name/shape moves between SDK releases. Current
-    /// matrix-rust-sdk fetches history via `room.messages(MessagesOptions::backward())`;
-    /// `matrix-sdk-ui`'s `Timeline` is the richer (and eventual) path. Pin the SDK,
-    /// then confirm the call, the `limit` field type, and the event extraction below.
-    pub(crate) async fn recent_messages(
-        &self,
-        room_id: &str,
-        limit: u16,
-    ) -> Result<Vec<ChatLine>, String> {
-        use matrix_sdk::room::MessagesOptions;
-        use matrix_sdk::ruma::events::{
-            room::message::MessageType, AnyMessageLikeEvent, AnyTimelineEvent,
-        };
-        use matrix_sdk::ruma::RoomId;
+/// Fetch the most recent `limit` text messages from a room, oldest-first - the
+/// data behind the conversation view. (The AI layer reuses this same path.)
+#[tauri::command]
+pub async fn room_messages(
+    state: tauri::State<'_, MatrixState>,
+    room_id: String,
+    limit: u16,
+) -> Result<Vec<ChatLine>, String> {
+    use matrix_sdk::room::MessagesOptions;
+    use matrix_sdk::ruma::events::{
+        room::message::MessageType, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
+    };
+    use matrix_sdk::ruma::RoomId;
 
-        let guard = self.client.read().await;
-        let client = guard.as_ref().ok_or("not logged in")?;
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("not logged in")?;
 
-        let rid = RoomId::parse(room_id).map_err(|e| e.to_string())?;
-        let room = client.get_room(&rid).ok_or("room not found")?;
+    let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
+    let room = client.get_room(&rid).ok_or("room not found")?;
 
-        let mut opts = MessagesOptions::backward();
-        opts.limit = (limit as u32).into(); // VERIFY: UInt conversion / field name
+    let mut opts = MessagesOptions::backward();
+    opts.limit = (limit as u32).into();
 
-        let chunk = room.messages(opts).await.map_err(|e| e.to_string())?.chunk;
+    let chunk = room.messages(opts).await.map_err(|e| e.to_string())?.chunk;
 
-        // Keep only text bodies. The API returns newest-first, so reverse at the end.
-        let mut lines: Vec<ChatLine> = chunk
-            .into_iter()
-            .filter_map(|ev| {
-                // VERIFY: deserialization path — `ev.raw().deserialize()` yields
-                // AnyTimelineEvent in current SDK; we then pluck m.room.message text.
-                let any = ev.raw().deserialize().ok()?;
-                if let AnyTimelineEvent::MessageLike(AnyMessageLikeEvent::RoomMessage(msg)) = any {
-                    let original = msg.as_original()?;
-                    if let MessageType::Text(text) = &original.content.msgtype {
-                        return Some(ChatLine {
-                            sender: original.sender.to_string(),
-                            body: text.body.clone(),
-                        });
-                    }
+    // Keep only text bodies. The API returns newest-first, so reverse at the end.
+    let mut lines: Vec<ChatLine> = chunk
+        .into_iter()
+        .filter_map(|ev| {
+            let any = ev.raw().deserialize().ok()?;
+            if let AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(msg)) = any {
+                let original = msg.as_original()?;
+                if let MessageType::Text(text) = &original.content.msgtype {
+                    return Some(ChatLine {
+                        sender: original.sender.to_string(),
+                        body: text.body.clone(),
+                    });
                 }
-                None
-            })
-            .collect();
-        lines.reverse();
-        Ok(lines)
-    }
+            }
+            None
+        })
+        .collect();
+    lines.reverse();
+    Ok(lines)
 }

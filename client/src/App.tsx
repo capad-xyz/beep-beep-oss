@@ -109,14 +109,19 @@ export default function App() {
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     const body = draft.trim();
-    if (!openRoom || !body) return;
+    if (!openRoom || !userId || !body) return;
     setDraft("");
+    // Optimistic echo: render the message instantly instead of waiting for a
+    // full reload — sending should feel immediate. Rolled back if the send fails;
+    // the next Refresh/open reconciles against the server copy.
+    const optimistic: ChatLine = { sender: userId, body, ts: Date.now() };
+    setMessages((prev) => [...prev, optimistic]);
     try {
       await sendMessage(openRoom.id, body);
-      await openConversation(openRoom);
     } catch (err) {
       setError(String(err));
       setDraft(body);
+      setMessages((prev) => prev.filter((m) => m !== optimistic));
     }
   }
 

@@ -15,7 +15,8 @@
 
 use std::sync::Arc;
 
-use matrix_sdk::{config::SyncSettings, ruma::OwnedUserId, Client};
+use matrix_sdk::{ruma::OwnedUserId, Client};
+use matrix_sdk_ui::sync_service::SyncService;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 use ts_rs::TS;
@@ -29,6 +30,9 @@ use ts_rs::TS;
 #[derive(Default)]
 pub struct MatrixState {
     client: Arc<RwLock<Option<Client>>>,
+    /// The Simplified Sliding Sync engine. It must be kept alive for the app's
+    /// lifetime (dropping it stops sync), so it lives in state beside the client.
+    sync_service: RwLock<Option<Arc<SyncService>>>,
 }
 
 /// A minimal, serializable view of a room for the UI.
@@ -83,17 +87,15 @@ pub async fn login(
 
     let user_id: OwnedUserId = client.user_id().ok_or("no user id after login")?.to_owned();
 
-    // Kick off background sync.
-    //
-    // ⭐ NO-DELAY NOTE: for production this should be driven by `matrix-sdk-ui`'s
-    // `SyncService` + `RoomListService`, which use Simplified Sliding Sync — the
-    // instant-sync engine that is the entire point of this project. The plain
-    // `client.sync()` below is a stand-in just to get the skeleton running;
-    // swapping in the sliding-sync services is the first real Phase 1 task.
-    let sync_client = client.clone();
-    tauri::async_runtime::spawn(async move {
-        let _ = sync_client.sync(SyncSettings::default()).await;
-    });
+    // Drive Simplified Sliding Sync (the no-delay engine) via matrix-sdk-ui's
+    // SyncService. It must be kept alive for the app's lifetime, so we stash it
+    // in shared state alongside the client; dropping it stops sync.
+    let sync_service = SyncService::builder(client.clone())
+        .build()
+        .await
+        .map_err(|e| e.to_string())?;
+    sync_service.start().await;
+    *state.sync_service.write().await = Some(Arc::new(sync_service));
 
     *state.client.write().await = Some(client);
     Ok(user_id.to_string())
@@ -162,6 +164,9 @@ async fn latest_message(room: &matrix_sdk::Room) -> Option<(String, f64)> {
 /// Log out and drop the client.
 #[tauri::command]
 pub async fn logout(state: tauri::State<'_, MatrixState>) -> Result<(), String> {
+    if let Some(sync) = state.sync_service.write().await.take() {
+        let _ = sync.stop().await;
+    }
     if let Some(client) = state.client.write().await.take() {
         let _ = client.matrix_auth().logout().await;
     }

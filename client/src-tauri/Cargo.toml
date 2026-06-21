@@ -25,6 +25,8 @@ tokio = { version = "1", features = ["full"] }
 #   e2e-encryption → end-to-end encryption support
 #   sqlite         → persist session + crypto keys on disk (fast restarts)
 matrix-sdk = { version = "0.18", features = ["e2e-encryption", "sqlite", "bundled-sqlite"] }
+# Simplified Sliding Sync engine (SyncService / RoomListService) — the "no-delay" sync.
+matrix-sdk-ui = "0.18"
 
 # Generates TypeScript types from our Rust structs (keeps the boundary in sync).
 ts-rs = "12"

@@ -182,6 +182,9 @@ pub async fn logout(state: tauri::State<'_, MatrixState>) -> Result<(), String> 
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct ChatLine {
     pub sender: String,
+    /// Resolved display name of the sender. The bridge sets these to the WhatsApp
+    /// contact's name; falls back to the mxid localpart when unknown.
+    pub sender_name: String,
     pub body: String,
     /// Milliseconds since the Unix epoch (origin_server_ts). f64 so it maps to a
     /// plain TS `number` for `new Date(ts)` — u64 would surface as `bigint`.
@@ -213,24 +216,52 @@ pub async fn room_messages(
 
     let chunk = room.messages(opts).await.map_err(|e| e.to_string())?.chunk;
 
-    // Keep only text bodies. The API returns newest-first, so reverse at the end.
-    let mut lines: Vec<ChatLine> = chunk
+    // First pass (sync): pull (sender, body, ts) for each text message.
+    let raw: Vec<(matrix_sdk::ruma::OwnedUserId, String, f64)> = chunk
         .into_iter()
         .filter_map(|ev| {
             let any = ev.raw().deserialize().ok()?;
             if let AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(msg)) = any {
                 let original = msg.as_original()?;
                 if let MessageType::Text(text) = &original.content.msgtype {
-                    return Some(ChatLine {
-                        sender: original.sender.to_string(),
-                        body: text.body.clone(),
-                        ts: u64::from(original.origin_server_ts.0) as f64,
-                    });
+                    return Some((
+                        original.sender.clone(),
+                        text.body.clone(),
+                        u64::from(original.origin_server_ts.0) as f64,
+                    ));
                 }
             }
             None
         })
         .collect();
+
+    // Second pass (async): resolve each sender's display name, cached per user.
+    let mut names: std::collections::HashMap<matrix_sdk::ruma::OwnedUserId, String> =
+        std::collections::HashMap::new();
+    let mut lines: Vec<ChatLine> = Vec::with_capacity(raw.len());
+    for (sender, body, ts) in raw {
+        let sender_name = match names.get(&sender) {
+            Some(n) => n.clone(),
+            None => {
+                let n = match room.get_member(&sender).await {
+                    Ok(Some(member)) => member
+                        .display_name()
+                        .map(|s| s.to_owned())
+                        .unwrap_or_else(|| sender.localpart().to_owned()),
+                    _ => sender.localpart().to_owned(),
+                };
+                names.insert(sender.clone(), n.clone());
+                n
+            }
+        };
+        lines.push(ChatLine {
+            sender: sender.to_string(),
+            sender_name,
+            body,
+            ts,
+        });
+    }
+    // `backward` gave newest-first; the UI wants oldest-first.
     lines.reverse();
     Ok(lines)
 }

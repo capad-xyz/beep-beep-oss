@@ -31,11 +31,6 @@ function initials(label: string): string {
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
-// "@whatsapp_49…:localhost" -> "whatsapp_49…" — a readable sender handle.
-function shortSender(id: string): string {
-  return id.replace(/^@/, "").split(":")[0];
-}
-
 // origin_server_ts (ms) -> a short local clock time, e.g. "18:55".
 function formatTime(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -155,7 +150,7 @@ export default function App() {
     // Optimistic echo: render the message instantly instead of waiting for a
     // full reload — sending should feel immediate. Rolled back if the send fails;
     // the next Refresh/open reconciles against the server copy.
-    const optimistic: ChatLine = { sender: userId, body, ts: Date.now() };
+    const optimistic: ChatLine = { sender: userId, sender_name: "You", body, ts: Date.now() };
     setMessages((prev) => [...prev, optimistic]);
     try {
       await sendMessage(openRoom.id, body);
@@ -229,7 +224,7 @@ export default function App() {
                 )}
                 <div className={`${own ? "msg own" : "msg"}${grouped ? " grouped" : ""}`}>
                   {!own && !grouped && (
-                    <span className="msg-sender">{shortSender(m.sender)}</span>
+                    <span className="msg-sender">{m.sender_name}</span>
                   )}
                   <span className="msg-body">{m.body}</span>
                   <span className="msg-time">{formatTime(m.ts)}</span>

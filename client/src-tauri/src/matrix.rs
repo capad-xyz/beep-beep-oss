@@ -199,9 +199,17 @@ async fn latest_message(room: &matrix_sdk::Room) -> Option<(String, f64)> {
             ev.raw().deserialize()
         {
             if let Some(original) = msg.as_original() {
-                if let MessageType::Text(text) = &original.content.msgtype {
+                // Text-like types (text/notice/emote) — so bot/bridge notices
+                // also surface as the room's last-message preview.
+                let body = match &original.content.msgtype {
+                    MessageType::Text(t) => Some(t.body.clone()),
+                    MessageType::Notice(n) => Some(n.body.clone()),
+                    MessageType::Emote(e) => Some(e.body.clone()),
+                    _ => None,
+                };
+                if let Some(body) = body {
                     let ts = u64::from(original.origin_server_ts.0) as f64;
-                    return Some((text.body.clone(), ts));
+                    return Some((body, ts));
                 }
             }
         }
@@ -283,10 +291,18 @@ pub async fn room_messages(
             let any = ev.raw().deserialize().ok()?;
             if let AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(msg)) = any {
                 let original = msg.as_original()?;
-                if let MessageType::Text(text) = &original.content.msgtype {
+                // Text-like message types: m.text plus m.notice (bots/bridges use
+                // notices for replies + status) and m.emote — all carry `.body`.
+                let body = match &original.content.msgtype {
+                    MessageType::Text(t) => Some(t.body.clone()),
+                    MessageType::Notice(n) => Some(n.body.clone()),
+                    MessageType::Emote(e) => Some(e.body.clone()),
+                    _ => None,
+                };
+                if let Some(body) = body {
                     return Some((
                         original.sender.clone(),
-                        text.body.clone(),
+                        body,
                         u64::from(original.origin_server_ts.0) as f64,
                     ));
                 }

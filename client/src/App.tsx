@@ -92,6 +92,16 @@ export default function App() {
     bottomRef.current?.scrollIntoView();
   }, [messages]);
 
+  // Esc closes the open conversation (back to the inbox).
+  useEffect(() => {
+    if (!openRoom) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpenRoom(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openRoom]);
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -169,7 +179,7 @@ export default function App() {
           </label>
           <label>
             Username
-            <input value={username} onChange={(e) => setUsername(e.target.value)} />
+            <input value={username} onChange={(e) => setUsername(e.target.value)} autoFocus />
           </label>
           <label>
             Password
@@ -234,6 +244,7 @@ export default function App() {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             placeholder="Type a message…"
+            autoFocus
           />
           <button type="submit" disabled={!draft.trim()}>Send</button>
         </form>

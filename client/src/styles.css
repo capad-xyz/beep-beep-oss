@@ -96,6 +96,7 @@ button:disabled { opacity: 0.6; cursor: default; }
   padding: 1.1rem 0.25rem 0.4rem;
 }
 .inbox-head h2 { margin: 0; font-size: 1.25rem; }
+.search { width: 100%; margin: 0.25rem 0 0.6rem; }
 
 .rooms { list-style: none; padding: 0; margin: 0; }
 .room {

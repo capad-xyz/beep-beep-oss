@@ -48,6 +48,7 @@ export default function App() {
   const [messages, setMessages] = useState<ChatLine[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [draft, setDraft] = useState("");
+  const [query, setQuery] = useState("");
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -185,6 +186,14 @@ export default function App() {
     if (au !== bu) return bu - au;
     return displayName(a).localeCompare(displayName(b));
   });
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? sorted.filter(
+        (r) =>
+          displayName(r).toLowerCase().includes(q) ||
+          (r.last_message ?? "").toLowerCase().includes(q)
+      )
+    : sorted;
 
   return (
     <div className="app">
@@ -206,13 +215,23 @@ export default function App() {
         </span>
       </div>
 
+      <input
+        className="search"
+        placeholder="Search chats…"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+
       {error && <p className="error">{error}</p>}
 
       <ul className="rooms">
         {rooms.length === 0 && (
           <li className="empty muted">No rooms yet — sync may still be running. Hit Refresh.</li>
         )}
-        {sorted.map((r) => {
+        {rooms.length > 0 && filtered.length === 0 && (
+          <li className="empty muted">No chats match “{query}”.</li>
+        )}
+        {filtered.map((r) => {
           const label = displayName(r);
           return (
             <li key={r.id} className="room" onClick={() => openConversation(r)}>

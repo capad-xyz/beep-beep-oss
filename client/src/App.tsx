@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { login, listRooms, logout, roomMessages, sendMessage } from "./api";
 import type { RoomSummary } from "./bindings/RoomSummary";
 import type { ChatLine } from "./bindings/ChatLine";
@@ -39,6 +39,25 @@ function shortSender(id: string): string {
 // origin_server_ts (ms) -> a short local clock time, e.g. "18:55".
 function formatTime(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+// Whether two epoch-ms timestamps fall on the same calendar day.
+function sameDay(a: number, b: number): boolean {
+  const da = new Date(a);
+  const db = new Date(b);
+  return (
+    da.getFullYear() === db.getFullYear() &&
+    da.getMonth() === db.getMonth() &&
+    da.getDate() === db.getDate()
+  );
+}
+
+// A day-separator label: "Today" / "Yesterday" / "Mon, Jun 16".
+function formatDay(ms: number): string {
+  const now = Date.now();
+  if (sameDay(ms, now)) return "Today";
+  if (sameDay(ms, now - 86_400_000)) return "Yesterday";
+  return new Date(ms).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
 }
 
 export default function App() {
@@ -174,12 +193,26 @@ export default function App() {
           )}
           {messages.map((m, i) => {
             const own = m.sender === userId;
+            const prev = i > 0 ? messages[i - 1] : null;
+            const showDay = !prev || !sameDay(prev.ts, m.ts);
+            // Group consecutive messages from the same sender within 5 minutes.
+            const grouped =
+              !!prev && !showDay && prev.sender === m.sender && m.ts - prev.ts < 300_000;
             return (
-              <div key={i} className={own ? "msg own" : "msg"}>
-                {!own && <span className="msg-sender">{shortSender(m.sender)}</span>}
-                <span className="msg-body">{m.body}</span>
-                <span className="msg-time">{formatTime(m.ts)}</span>
-              </div>
+              <Fragment key={i}>
+                {showDay && (
+                  <div className="day-sep">
+                    <span>{formatDay(m.ts)}</span>
+                  </div>
+                )}
+                <div className={`${own ? "msg own" : "msg"}${grouped ? " grouped" : ""}`}>
+                  {!own && !grouped && (
+                    <span className="msg-sender">{shortSender(m.sender)}</span>
+                  )}
+                  <span className="msg-body">{m.body}</span>
+                  <span className="msg-time">{formatTime(m.ts)}</span>
+                </div>
+              </Fragment>
             );
           })}
           <div ref={bottomRef} />

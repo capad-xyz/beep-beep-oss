@@ -1,111 +1,132 @@
 :root {
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   color: #e7e7ea;
-  background: #16161a;
+  background: #0f0f13;
+  --accent: #5b6cff;
+  --panel: #1b1b21;
+  --panel-2: #16161b;
+  --border: #2a2a33;
+  --muted: #8a8a96;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
+body { margin: 0; background: #0f0f13; }
 
-body {
-  margin: 0;
-}
+.muted { color: var(--muted); }
+.error { color: #ff6b6b; margin: 0.5rem 0.25rem; }
 
-main {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 1rem;
-}
-
+/* ---------- Login ---------- */
 .center {
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
-  padding-top: 4rem;
+  justify-content: center;
+  gap: 0.3rem;
 }
-
-.muted {
-  color: #8a8a93;
-}
-
-.error {
-  color: #ff6b6b;
-}
+.center h1 { margin: 0; font-size: 2.4rem; letter-spacing: -0.02em; }
 
 .card {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  width: 320px;
-  margin-top: 1rem;
-  padding: 1.25rem;
-  background: #1f1f25;
-  border-radius: 12px;
+  gap: 0.85rem;
+  width: 340px;
+  margin-top: 1.25rem;
+  padding: 1.5rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
 }
-
-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.85rem;
-  color: #b6b6bf;
-}
-
+label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.8rem; color: var(--muted); }
 input {
-  padding: 0.5rem;
-  border: 1px solid #33333c;
-  border-radius: 8px;
-  background: #121216;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-2);
   color: inherit;
+  font-size: 0.95rem;
 }
+input:focus { outline: none; border-color: var(--accent); }
 
 button {
-  padding: 0.5rem 0.9rem;
+  padding: 0.6rem 0.95rem;
   border: 0;
-  border-radius: 8px;
-  background: #5b6cff;
+  border-radius: 9px;
+  background: var(--accent);
   color: white;
+  font-weight: 600;
   cursor: pointer;
 }
+button:hover { filter: brightness(1.08); }
+button:disabled { opacity: 0.6; cursor: default; }
 
-button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
+/* ---------- Inbox ---------- */
+.app { max-width: 900px; margin: 0 auto; padding: 0 1rem 2rem; }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid #2a2a31;
+  padding: 0.9rem 0.25rem;
+  background: #0f0f13;
+  border-bottom: 1px solid var(--border);
 }
-
-.topbar button {
-  margin-left: 0.5rem;
-  background: #2a2a31;
+.brand { display: flex; align-items: center; gap: 0.55rem; font-weight: 700; }
+.logo {
+  display: inline-grid;
+  place-items: center;
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: white;
+  font-size: 0.8rem;
+  font-weight: 800;
 }
+.account { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+.ghost { background: var(--panel); border: 1px solid var(--border); color: #cfcfd6; font-weight: 500; }
+.ghost:hover { background: #23232b; filter: none; }
 
-.rooms {
-  list-style: none;
-  padding: 0;
-  margin: 1rem 0 0;
+.inbox-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 1.1rem 0.25rem 0.4rem;
 }
+.inbox-head h2 { margin: 0; font-size: 1.25rem; }
 
+.rooms { list-style: none; padding: 0; margin: 0; }
 .room {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 0.7rem 0.5rem;
-  border-bottom: 1px solid #222229;
+  gap: 0.8rem;
+  padding: 0.6rem 0.5rem;
+  border-radius: 10px;
+  cursor: pointer;
 }
-
+.room:hover { background: var(--panel); }
+.avatar {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.room-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge {
-  background: #5b6cff;
+  flex: 0 0 auto;
+  min-width: 20px;
+  text-align: center;
+  background: var(--accent);
   border-radius: 999px;
-  padding: 0.05rem 0.5rem;
-  font-size: 0.75rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: white;
 }
+.empty { padding: 2rem 0.5rem; text-align: center; }

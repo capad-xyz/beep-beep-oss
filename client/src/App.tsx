@@ -146,7 +146,7 @@ export default function App() {
   useEffect(() => {
     if (!openRoom) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpenRoom(null);
+      if (e.key === "Escape") { setOpenRoom(null); setError(null); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -253,7 +253,7 @@ export default function App() {
     return (
       <div className="app">
         <header className="topbar">
-          <button className="ghost" onClick={() => setOpenRoom(null)}>← Inbox</button>
+          <button className="ghost" onClick={() => { setOpenRoom(null); setError(null); }}>← Inbox</button>
           <strong className="convo-title">{displayName(openRoom)}</strong>
           <button className="ghost" onClick={() => openConversation(openRoom)}>Refresh</button>
         </header>

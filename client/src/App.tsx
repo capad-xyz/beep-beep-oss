@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { login, listRooms, logout, roomMessages, sendMessage, roomAvatar, joinRoom } from "./api";
+import { login, listRooms, logout, roomMessages, sendMessage, roomAvatar, joinRoom, restoreSession } from "./api";
 import { listen } from "@tauri-apps/api/event";
 import type { RoomSummary } from "./bindings/RoomSummary";
 import type { ChatLine } from "./bindings/ChatLine";
@@ -136,6 +136,7 @@ export default function App() {
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
+  const [restoring, setRestoring] = useState(true);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   // Latest open room, readable from the live-update listener without re-subscribing.
   const openRoomRef = useRef<RoomSummary | null>(null);
@@ -190,6 +191,24 @@ export default function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
+
+  // On launch, try to restore a saved session so we skip the login screen.
+  useEffect(() => {
+    (async () => {
+      try {
+        const id = await restoreSession();
+        if (id) {
+          setUserId(id);
+          await refreshRooms();
+        }
+      } catch {
+        /* no / expired session — fall through to the login screen */
+      } finally {
+        setRestoring(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -263,6 +282,16 @@ export default function App() {
       setDraft(body);
       setMessages((prev) => prev.filter((m) => m !== optimistic));
     }
+  }
+
+  // ---- Restoring saved session ----
+  if (restoring) {
+    return (
+      <main className="center">
+        <h1>beep-beep</h1>
+        <p className="muted">Restoring session…</p>
+      </main>
+    );
   }
 
   // ---- Login ----

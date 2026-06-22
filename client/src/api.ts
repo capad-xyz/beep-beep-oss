@@ -17,6 +17,11 @@ export async function login(
   return invoke<string>("login", { homeserver, username, password });
 }
 
+/** Try to restore a saved session. Returns the user id, or null if none. */
+export async function restoreSession(): Promise<string | null> {
+  return invoke<string | null>("restore_session");
+}
+
 /** Fetch the current room list. */
 export async function listRooms(): Promise<RoomSummary[]> {
   return invoke<RoomSummary[]>("list_rooms");

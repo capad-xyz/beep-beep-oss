@@ -41,6 +41,7 @@ pub fn run() {
         // The Rust <-> TS boundary: every command the UI can invoke.
         .invoke_handler(tauri::generate_handler![
             matrix::login,
+            matrix::restore_session,
             matrix::list_rooms,
             matrix::logout,
             matrix::room_messages,

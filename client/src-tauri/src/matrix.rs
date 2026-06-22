@@ -16,10 +16,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use matrix_sdk::{ruma::OwnedUserId, Client};
+use matrix_sdk::{authentication::matrix::MatrixSession, ruma::OwnedUserId, store::RoomLoadSettings, Client};
 use matrix_sdk_ui::sync_service::SyncService;
 use serde::{Deserialize, Serialize};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
 use ts_rs::TS;
 
@@ -35,6 +35,58 @@ pub struct MatrixState {
     /// The Simplified Sliding Sync engine. It must be kept alive for the app's
     /// lifetime (dropping it stops sync), so it lives in state beside the client.
     sync_service: RwLock<Option<Arc<SyncService>>>,
+}
+
+/// On-disk session for "stay logged in". The homeserver is saved alongside the
+/// tokens because restore must rebuild the client against the same server.
+#[derive(Serialize, Deserialize)]
+struct SavedSession {
+    homeserver: String,
+    session: MatrixSession,
+}
+
+/// Per-app writable data dir (created if missing): holds the SQLite store + the
+/// saved session. On Windows this is %APPDATA%\<app>.
+fn data_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| format!("app data dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// Build + start Simplified Sliding Sync for `client`, and wire its updates to a
+/// debounced "rooms-updated" Tauri event so the UI stays live. Returns the
+/// SyncService (kept alive in state). Shared by login + restore_session.
+async fn start_sync(client: &Client, app: tauri::AppHandle) -> Result<Arc<SyncService>, String> {
+    let sync_service = SyncService::builder(client.clone())
+        .build()
+        .await
+        .map_err(|e| e.to_string())?;
+    sync_service.start().await;
+
+    let mut updates = client.subscribe_to_all_room_updates();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            match updates.recv().await {
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+            // Coalesce anything that arrives within 300ms into this tick.
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(300)) => break,
+                    r = updates.recv() => match r {
+                        Ok(_) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+                    },
+                }
+            }
+            let _ = app.emit("rooms-updated", ());
+        }
+    });
+
+    Ok(Arc::new(sync_service))
 }
 
 /// A minimal, serializable view of a room for the UI.
@@ -76,10 +128,12 @@ pub async fn login(
     username: String,
     password: String,
 ) -> Result<String, String> {
-    // Build a client pointed at the homeserver. The `sqlite` feature (see
-    // Cargo.toml) persists the session + E2EE keys on disk so restarts are fast.
+    // On-disk SQLite store (persists session + E2EE keys) under the app data dir,
+    // so the next launch can restore this login (see restore_session).
+    let dir = data_dir(&app)?;
     let client = Client::builder()
         .homeserver_url(&homeserver)
+        .sqlite_store(dir.join("matrix.db"), None)
         .build()
         .await
         .map_err(|e| e.to_string())?;
@@ -95,47 +149,60 @@ pub async fn login(
 
     let user_id: OwnedUserId = client.user_id().ok_or("no user id after login")?.to_owned();
 
-    // Drive Simplified Sliding Sync (the no-delay engine) via matrix-sdk-ui's
-    // SyncService. It must be kept alive for the app's lifetime, so we stash it
-    // in shared state alongside the client; dropping it stops sync.
-    let sync_service = SyncService::builder(client.clone())
-        .build()
-        .await
-        .map_err(|e| e.to_string())?;
-    sync_service.start().await;
-    *state.sync_service.write().await = Some(Arc::new(sync_service));
-
-    // LIVE INBOX: emit "rooms-updated" whenever a sync touches a room, so the
-    // frontend re-pulls the room list with no manual Refresh. Debounced (300ms)
-    // so a burst of sync updates collapses into a single refresh.
-    {
-        let app = app.clone();
-        let mut updates = client.subscribe_to_all_room_updates();
-        tauri::async_runtime::spawn(async move {
-            loop {
-                match updates.recv().await {
-                    Ok(_) => {}
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                }
-                // Coalesce anything that arrives within 300ms into this tick.
-                loop {
-                    tokio::select! {
-                        _ = tokio::time::sleep(Duration::from_millis(300)) => break,
-                        r = updates.recv() => match r {
-                            Ok(_) => continue,
-                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
-                            Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
-                        },
-                    }
-                }
-                let _ = app.emit("rooms-updated", ());
+    // Persist the session so the next launch can restore it (stay logged in).
+    if let Some(session) = client.matrix_auth().session() {
+        let saved = SavedSession { homeserver: homeserver.clone(), session };
+        match serde_json::to_string(&saved) {
+            Ok(json) => {
+                let _ = std::fs::write(dir.join("session.json"), json);
             }
-        });
+            Err(e) => eprintln!("session serialize failed: {e}"),
+        }
     }
+
+    // Sliding sync + live "rooms-updated" events (shared with restore_session).
+    let svc = start_sync(&client, app.clone()).await?;
+    *state.sync_service.write().await = Some(svc);
 
     *state.client.write().await = Some(client);
     Ok(user_id.to_string())
+}
+
+/// Try to restore a persisted session (stay logged in across restarts). Returns
+/// the user id on success, or None when there is no saved session to restore.
+#[tauri::command]
+pub async fn restore_session(
+    state: tauri::State<'_, MatrixState>,
+    app: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    let dir = data_dir(&app)?;
+    let path = dir.join("session.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let saved: SavedSession = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+
+    let client = Client::builder()
+        .homeserver_url(&saved.homeserver)
+        .sqlite_store(dir.join("matrix.db"), None)
+        .build()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .matrix_auth()
+        .restore_session(saved.session, RoomLoadSettings::default())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let user_id: OwnedUserId = client.user_id().ok_or("no user id after restore")?.to_owned();
+
+    let svc = start_sync(&client, app.clone()).await?;
+    *state.sync_service.write().await = Some(svc);
+    *state.client.write().await = Some(client);
+    Ok(Some(user_id.to_string()))
 }
 
 /// Return the current room list for the UI.
@@ -219,7 +286,14 @@ async fn latest_message(room: &matrix_sdk::Room) -> Option<(String, f64)> {
 
 /// Log out and drop the client.
 #[tauri::command]
-pub async fn logout(state: tauri::State<'_, MatrixState>) -> Result<(), String> {
+pub async fn logout(
+    state: tauri::State<'_, MatrixState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    // Drop the saved session so logging out actually persists across restarts.
+    if let Ok(dir) = data_dir(&app) {
+        let _ = std::fs::remove_file(dir.join("session.json"));
+    }
     if let Some(sync) = state.sync_service.write().await.take() {
         let _ = sync.stop().await;
     }

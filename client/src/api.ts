@@ -1,12 +1,12 @@
 // Typed wrappers around the Rust command surface (see src-tauri/src/matrix.rs).
 //
 // This is the ONLY place the frontend talks to the Rust core. Everything goes
-// through Tauri's `invoke()`, which serializes args to the Rust command and
-// deserializes the result back. The `RoomSummary` type is GENERATED from Rust by
-// ts-rs (see src/bindings/) — never edit that type by hand; regenerate it.
+// through Tauri's `invoke()`. The bound types are GENERATED from Rust by ts-rs
+// (see src/bindings/) — never edit those by hand; regenerate with `cargo test`.
 
 import { invoke } from "@tauri-apps/api/core";
 import type { RoomSummary } from "./bindings/RoomSummary";
+import type { ChatLine } from "./bindings/ChatLine";
 
 /** Log in to a homeserver. Returns the full Matrix user id (@you:server). */
 export async function login(
@@ -17,6 +17,11 @@ export async function login(
   return invoke<string>("login", { homeserver, username, password });
 }
 
+/** Try to restore a saved session. Returns the user id, or null if none. */
+export async function restoreSession(): Promise<string | null> {
+  return invoke<string | null>("restore_session");
+}
+
 /** Fetch the current room list. */
 export async function listRooms(): Promise<RoomSummary[]> {
   return invoke<RoomSummary[]>("list_rooms");
@@ -25,4 +30,24 @@ export async function listRooms(): Promise<RoomSummary[]> {
 /** Log out and drop the session. */
 export async function logout(): Promise<void> {
   return invoke<void>("logout");
+}
+
+/** Fetch recent text messages for a room, oldest-first. */
+export async function roomMessages(roomId: string, limit = 50): Promise<ChatLine[]> {
+  return invoke<ChatLine[]>("room_messages", { roomId, limit });
+}
+
+/** Send a plain-text message to a room. */
+export async function sendMessage(roomId: string, body: string): Promise<void> {
+  return invoke<void>("send_message", { roomId, body });
+}
+
+/** Fetch a room's avatar as a data: URL, or null if it has none. */
+export async function roomAvatar(roomId: string): Promise<string | null> {
+  return invoke<string | null>("room_avatar", { roomId });
+}
+
+/** Accept a pending invite (or re-join a left room). */
+export async function joinRoom(roomId: string): Promise<void> {
+  return invoke<void>("join_room", { roomId });
 }

@@ -14,9 +14,12 @@
 //! tweak are marked with `// VERIFY:`.
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use matrix_sdk::{config::SyncSettings, ruma::OwnedUserId, Client};
+use matrix_sdk::{authentication::matrix::MatrixSession, ruma::OwnedUserId, store::RoomLoadSettings, Client};
+use matrix_sdk_ui::sync_service::SyncService;
 use serde::{Deserialize, Serialize};
+use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
 use ts_rs::TS;
 
@@ -29,6 +32,61 @@ use ts_rs::TS;
 #[derive(Default)]
 pub struct MatrixState {
     client: Arc<RwLock<Option<Client>>>,
+    /// The Simplified Sliding Sync engine. It must be kept alive for the app's
+    /// lifetime (dropping it stops sync), so it lives in state beside the client.
+    sync_service: RwLock<Option<Arc<SyncService>>>,
+}
+
+/// On-disk session for "stay logged in". The homeserver is saved alongside the
+/// tokens because restore must rebuild the client against the same server.
+#[derive(Serialize, Deserialize)]
+struct SavedSession {
+    homeserver: String,
+    session: MatrixSession,
+}
+
+/// Per-app writable data dir (created if missing): holds the SQLite store + the
+/// saved session. On Windows this is %APPDATA%\<app>.
+fn data_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| format!("app data dir: {e}"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// Build + start Simplified Sliding Sync for `client`, and wire its updates to a
+/// debounced "rooms-updated" Tauri event so the UI stays live. Returns the
+/// SyncService (kept alive in state). Shared by login + restore_session.
+async fn start_sync(client: &Client, app: tauri::AppHandle) -> Result<Arc<SyncService>, String> {
+    let sync_service = SyncService::builder(client.clone())
+        .build()
+        .await
+        .map_err(|e| e.to_string())?;
+    sync_service.start().await;
+
+    let mut updates = client.subscribe_to_all_room_updates();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            match updates.recv().await {
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+            // Coalesce anything that arrives within 300ms into this tick.
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(300)) => break,
+                    r = updates.recv() => match r {
+                        Ok(_) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => return,
+                    },
+                }
+            }
+            let _ = app.emit("rooms-updated", ());
+        }
+    });
+
+    Ok(Arc::new(sync_service))
 }
 
 /// A minimal, serializable view of a room for the UI.
@@ -38,7 +96,7 @@ pub struct MatrixState {
 /// gotcha we flagged when choosing this stack. The generated file lands in
 /// `../src/bindings/` and the frontend imports it. Regenerate via `cargo test`.
 #[derive(Serialize, Deserialize, TS)]
-#[ts(export, export_to = "../src/bindings/")]
+#[ts(export, export_to = "../../src/bindings/")]
 pub struct RoomSummary {
     pub id: String,
     pub name: Option<String>,
@@ -46,6 +104,16 @@ pub struct RoomSummary {
     /// Whether this room is a bridged chat. Placeholder for now; a real
     /// implementation inspects room state for the bridge's marker events.
     pub is_bridged: bool,
+    /// Our membership: "joined" | "invited" | "left" | "knocked" | "banned".
+    /// The mautrix bridge invites us into each WhatsApp portal and waits for us
+    /// to accept, so many real chats start "invited" — the UI dims those + offers
+    /// Accept instead of opening into a 403. Derived from room.state().
+    pub membership: String,
+    /// Preview of the most recent text message, if any.
+    pub last_message: Option<String>,
+    /// Timestamp (ms since epoch) of that latest message — drives recency sort
+    /// and a relative "2m / 3h / Mon" label in the inbox. f64 → plain TS number.
+    pub last_ts: Option<f64>,
 }
 
 /// Log in with username + password and start syncing.
@@ -55,14 +123,17 @@ pub struct RoomSummary {
 #[tauri::command]
 pub async fn login(
     state: tauri::State<'_, MatrixState>,
+    app: tauri::AppHandle,
     homeserver: String,
     username: String,
     password: String,
 ) -> Result<String, String> {
-    // Build a client pointed at the homeserver. The `sqlite` feature (see
-    // Cargo.toml) persists the session + E2EE keys on disk so restarts are fast.
+    // On-disk SQLite store (persists session + E2EE keys) under the app data dir,
+    // so the next launch can restore this login (see restore_session).
+    let dir = data_dir(&app)?;
     let client = Client::builder()
         .homeserver_url(&homeserver)
+        .sqlite_store(dir.join("matrix.db"), None)
         .build()
         .await
         .map_err(|e| e.to_string())?;
@@ -78,20 +149,60 @@ pub async fn login(
 
     let user_id: OwnedUserId = client.user_id().ok_or("no user id after login")?.to_owned();
 
-    // Kick off background sync.
-    //
-    // ⭐ NO-DELAY NOTE: for production this should be driven by `matrix-sdk-ui`'s
-    // `SyncService` + `RoomListService`, which use Simplified Sliding Sync — the
-    // instant-sync engine that is the entire point of this project. The plain
-    // `client.sync()` below is a stand-in just to get the skeleton running;
-    // swapping in the sliding-sync services is the first real Phase 1 task.
-    let sync_client = client.clone();
-    tauri::async_runtime::spawn(async move {
-        let _ = sync_client.sync(SyncSettings::default()).await;
-    });
+    // Persist the session so the next launch can restore it (stay logged in).
+    if let Some(session) = client.matrix_auth().session() {
+        let saved = SavedSession { homeserver: homeserver.clone(), session };
+        match serde_json::to_string(&saved) {
+            Ok(json) => {
+                let _ = std::fs::write(dir.join("session.json"), json);
+            }
+            Err(e) => eprintln!("session serialize failed: {e}"),
+        }
+    }
+
+    // Sliding sync + live "rooms-updated" events (shared with restore_session).
+    let svc = start_sync(&client, app.clone()).await?;
+    *state.sync_service.write().await = Some(svc);
 
     *state.client.write().await = Some(client);
     Ok(user_id.to_string())
+}
+
+/// Try to restore a persisted session (stay logged in across restarts). Returns
+/// the user id on success, or None when there is no saved session to restore.
+#[tauri::command]
+pub async fn restore_session(
+    state: tauri::State<'_, MatrixState>,
+    app: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    let dir = data_dir(&app)?;
+    let path = dir.join("session.json");
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let saved: SavedSession = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+
+    let client = Client::builder()
+        .homeserver_url(&saved.homeserver)
+        .sqlite_store(dir.join("matrix.db"), None)
+        .build()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    client
+        .matrix_auth()
+        .restore_session(saved.session, RoomLoadSettings::default())
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let user_id: OwnedUserId = client.user_id().ok_or("no user id after restore")?.to_owned();
+
+    let svc = start_sync(&client, app.clone()).await?;
+    *state.sync_service.write().await = Some(svc);
+    *state.client.write().await = Some(client);
+    Ok(Some(user_id.to_string()))
 }
 
 /// Return the current room list for the UI.
@@ -99,30 +210,289 @@ pub async fn login(
 pub async fn list_rooms(
     state: tauri::State<'_, MatrixState>,
 ) -> Result<Vec<RoomSummary>, String> {
+    use matrix_sdk::RoomState;
+
     let guard = state.client.read().await;
     let client = guard.as_ref().ok_or("not logged in")?;
 
-    let rooms = client
-        .rooms()
-        .into_iter()
-        .map(|room| RoomSummary {
+    let mut rooms = Vec::new();
+    for room in client.rooms() {
+        // Prefer the SDK's computed display name (covers DMs / bridged rooms that
+        // carry no m.room.name), falling back to the raw name.
+        let name = match room.display_name().await {
+            Ok(dn) => Some(dn.to_string()),
+            Err(_) => room.name(),
+        };
+        let (last_message, last_ts) = match latest_message(&room).await {
+            Some((body, ts)) => (Some(body), Some(ts)),
+            None => (None, None),
+        };
+        let membership = match room.state() {
+            RoomState::Joined => "joined",
+            RoomState::Invited => "invited",
+            RoomState::Left => "left",
+            RoomState::Knocked => "knocked",
+            RoomState::Banned => "banned",
+        }
+        .to_string();
+        rooms.push(RoomSummary {
             id: room.room_id().to_string(),
-            name: room.name(), // VERIFY: returns Option<String> in current SDK
-            // VERIFY: real unread count via room.unread_notification_counts();
-            // left as 0 here to keep the skeleton compiling without guessing.
-            unread: 0,
+            name,
+            unread: room.unread_notification_counts().notification_count,
             is_bridged: false,
-        })
-        .collect();
+            membership,
+            last_message,
+            last_ts,
+        });
+    }
 
     Ok(rooms)
 }
 
+/// Best-effort preview: the most recent text message in a room, if any.
+/// NOTE: this does a per-room history fetch, so it is O(rooms) network calls —
+/// fine for a local server, but Simplified Sliding Sync is the real fix.
+async fn latest_message(room: &matrix_sdk::Room) -> Option<(String, f64)> {
+    use matrix_sdk::room::MessagesOptions;
+    use matrix_sdk::ruma::events::{
+        room::message::MessageType, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
+    };
+    let mut opts = MessagesOptions::backward();
+    opts.limit = 10u32.into();
+    let chunk = room.messages(opts).await.ok()?.chunk;
+    // `backward` yields newest-first, so the first text we hit is the latest.
+    for ev in chunk {
+        if let Ok(AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(msg))) =
+            ev.raw().deserialize()
+        {
+            if let Some(original) = msg.as_original() {
+                // Text-like types (text/notice/emote) — so bot/bridge notices
+                // also surface as the room's last-message preview.
+                let body = match &original.content.msgtype {
+                    MessageType::Text(t) => Some(t.body.clone()),
+                    MessageType::Notice(n) => Some(n.body.clone()),
+                    MessageType::Emote(e) => Some(e.body.clone()),
+                    _ => None,
+                };
+                if let Some(body) = body {
+                    let ts = u64::from(original.origin_server_ts.0) as f64;
+                    return Some((body, ts));
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Log out and drop the client.
 #[tauri::command]
-pub async fn logout(state: tauri::State<'_, MatrixState>) -> Result<(), String> {
+pub async fn logout(
+    state: tauri::State<'_, MatrixState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    // Drop the saved session so logging out actually persists across restarts.
+    if let Ok(dir) = data_dir(&app) {
+        let _ = std::fs::remove_file(dir.join("session.json"));
+    }
+    if let Some(sync) = state.sync_service.write().await.take() {
+        let _ = sync.stop().await;
+    }
     if let Some(client) = state.client.write().await.take() {
         let _ = client.matrix_auth().logout().await;
     }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Message history — context source for the AI layer (see ai.rs).
+//
+// The `ai` module reaches messages ONLY through the helper below, never through
+// the `Client` directly. That keeps the client encapsulated here and keeps the
+// AI layer free of any direct dependency on Matrix internals (see the licensing
+// note in ai.rs).
+// ---------------------------------------------------------------------------
+
+/// One message line, flattened for the conversation view (reused by the AI layer).
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ChatLine {
+    pub sender: String,
+    /// Resolved display name of the sender. The bridge sets these to the WhatsApp
+    /// contact's name; falls back to the mxid localpart when unknown.
+    pub sender_name: String,
+    pub body: String,
+    /// Milliseconds since the Unix epoch (origin_server_ts). f64 so it maps to a
+    /// plain TS `number` for `new Date(ts)` — u64 would surface as `bigint`.
+    pub ts: f64,
+}
+
+/// Fetch the most recent `limit` text messages from a room, oldest-first - the
+/// data behind the conversation view. (The AI layer reuses this same path.)
+#[tauri::command]
+pub async fn room_messages(
+    state: tauri::State<'_, MatrixState>,
+    room_id: String,
+    limit: u16,
+) -> Result<Vec<ChatLine>, String> {
+    use matrix_sdk::room::MessagesOptions;
+    use matrix_sdk::ruma::events::{
+        room::message::MessageType, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
+    };
+    use matrix_sdk::ruma::RoomId;
+
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("not logged in")?;
+
+    let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
+    let room = client.get_room(&rid).ok_or("room not found")?;
+
+    // We can only read history for joined rooms. The bridge leaves WhatsApp
+    // portals "invited" until accepted; /messages on those 403s. Return empty so
+    // the conversation shows its normal empty state, not an error banner.
+    if room.state() != matrix_sdk::RoomState::Joined {
+        return Ok(Vec::new());
+    }
+
+    let mut opts = MessagesOptions::backward();
+    opts.limit = (limit as u32).into();
+
+    let chunk = room.messages(opts).await.map_err(|e| e.to_string())?.chunk;
+
+    // First pass (sync): pull (sender, body, ts) for each text message.
+    let raw: Vec<(matrix_sdk::ruma::OwnedUserId, String, f64)> = chunk
+        .into_iter()
+        .filter_map(|ev| {
+            let any = ev.raw().deserialize().ok()?;
+            if let AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(msg)) = any {
+                let original = msg.as_original()?;
+                // Text-like message types: m.text plus m.notice (bots/bridges use
+                // notices for replies + status) and m.emote — all carry `.body`.
+                let body = match &original.content.msgtype {
+                    MessageType::Text(t) => Some(t.body.clone()),
+                    MessageType::Notice(n) => Some(n.body.clone()),
+                    MessageType::Emote(e) => Some(e.body.clone()),
+                    _ => None,
+                };
+                if let Some(body) = body {
+                    return Some((
+                        original.sender.clone(),
+                        body,
+                        u64::from(original.origin_server_ts.0) as f64,
+                    ));
+                }
+            }
+            None
+        })
+        .collect();
+
+    // Second pass (async): resolve each sender's display name, cached per user.
+    let mut names: std::collections::HashMap<matrix_sdk::ruma::OwnedUserId, String> =
+        std::collections::HashMap::new();
+    let mut lines: Vec<ChatLine> = Vec::with_capacity(raw.len());
+    for (sender, body, ts) in raw {
+        let sender_name = match names.get(&sender) {
+            Some(n) => n.clone(),
+            None => {
+                let n = match room.get_member(&sender).await {
+                    Ok(Some(member)) => member
+                        .display_name()
+                        .map(|s| s.to_owned())
+                        .unwrap_or_else(|| sender.localpart().to_owned()),
+                    _ => sender.localpart().to_owned(),
+                };
+                names.insert(sender.clone(), n.clone());
+                n
+            }
+        };
+        lines.push(ChatLine {
+            sender: sender.to_string(),
+            sender_name,
+            body,
+            ts,
+        });
+    }
+    // `backward` gave newest-first; the UI wants oldest-first.
+    lines.reverse();
+    Ok(lines)
+}
+
+/// Send a plain-text message to a room.
+#[tauri::command]
+pub async fn send_message(
+    state: tauri::State<'_, MatrixState>,
+    room_id: String,
+    body: String,
+) -> Result<(), String> {
+    use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+    use matrix_sdk::ruma::RoomId;
+
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("not logged in")?;
+
+    let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
+    let room = client.get_room(&rid).ok_or("room not found")?;
+
+    room.send(RoomMessageEventContent::text_plain(body))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Lazily fetch a single room's avatar as a small thumbnail, returned as a
+/// `data:` URL ready to drop into an `<img src>`. Returns `None` when the room
+/// has no avatar set (most 1:1 WhatsApp DMs have one; some groups don't).
+///
+/// WHY LAZY: O(1) network per call, invoked per visible row from the frontend —
+/// NOT inside list_rooms, which would make room-list load O(rooms) downloads.
+/// `avatar()` passes use_cache=true, and the UI caches by room id, so repeats
+/// are cheap.
+#[tauri::command]
+pub async fn room_avatar(
+    state: tauri::State<'_, MatrixState>,
+    room_id: String,
+) -> Result<Option<String>, String> {
+    use base64::engine::general_purpose::STANDARD;
+    use base64::Engine;
+    use matrix_sdk::media::{MediaFormat, MediaThumbnailSettings};
+    use matrix_sdk::ruma::api::client::media::get_content_thumbnail::v3::Method;
+    use matrix_sdk::ruma::{uint, RoomId};
+
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("not logged in")?;
+
+    let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
+    let room = client.get_room(&rid).ok_or("room not found")?;
+
+    // Small, cropped, square thumbnail — fine for a 40px list avatar.
+    let settings = MediaThumbnailSettings::with_method(Method::Crop, uint!(96), uint!(96));
+
+    // `avatar()` returns Ok(None) on its own when the room has no avatar_url.
+    let bytes: Option<Vec<u8>> = room
+        .avatar(MediaFormat::Thumbnail(settings))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Browsers content-sniff <img> data regardless of the declared MIME, so a
+    // jpeg label works even when the source is PNG/WebP.
+    Ok(bytes.map(|b| format!("data:image/jpeg;base64,{}", STANDARD.encode(&b))))
+}
+
+/// Accept a pending invite (or re-join a left room). The mautrix bridge invites
+/// us into each WhatsApp portal; the inbox surfaces those as "invited" rows whose
+/// Accept action calls this. After it returns, reload the list / open the room.
+#[tauri::command]
+pub async fn join_room(
+    state: tauri::State<'_, MatrixState>,
+    room_id: String,
+) -> Result<(), String> {
+    use matrix_sdk::ruma::RoomId;
+
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("not logged in")?;
+
+    let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
+    let room = client.get_room(&rid).ok_or("room not found")?;
+
+    room.join().await.map_err(|e| e.to_string())?;
     Ok(())
 }

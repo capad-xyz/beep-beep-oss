@@ -3,7 +3,7 @@ name = "beep-beep"
 version = "0.0.0"
 description = "beep-beep-oss client"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.93"
 
 # The library is what mobile (iOS/Android) links against; the binary is desktop.
 # Both call into `run()` in lib.rs — that's how one codebase targets all platforms.
@@ -24,10 +24,22 @@ tokio = { version = "1", features = ["full"] }
 # The version below is indicative — the SDK moves fast. Features:
 #   e2e-encryption → end-to-end encryption support
 #   sqlite         → persist session + crypto keys on disk (fast restarts)
-matrix-sdk = { version = "0.10", features = ["e2e-encryption", "sqlite"] }
+matrix-sdk = { version = "0.18", features = ["e2e-encryption", "sqlite", "bundled-sqlite"] }
+# Simplified Sliding Sync engine (SyncService / RoomListService) — the "no-delay" sync.
+matrix-sdk-ui = "0.18"
 
 # Generates TypeScript types from our Rust structs (keeps the boundary in sync).
-ts-rs = "10"
+ts-rs = "12"
+
+# Base64-encodes avatar thumbnails into data: URLs for the webview (room_avatar).
+base64 = "0.22"
+
+# AI layer (Inbox Intelligence). One HTTP client serves every backend because
+# AMD (vLLM/ROCm), Qwen Cloud (DashScope), DeepSeek and OpenAI all expose the
+# SAME OpenAI-compatible API — so providers differ only by {base_url, model, key}.
+# rustls-tls avoids a system OpenSSL dependency (matters for mobile + Windows).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+async-trait = "0.1"
 
 [features]
 # Tauri uses this to enable mobile-specific code paths.

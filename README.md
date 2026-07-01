@@ -54,19 +54,25 @@ reasoning behind each decision.
 
 ## Project status
 
-🚧 **Pre-alpha — Phase 0.** The client isn't built yet; we're validating the core
-thesis (instant sync, multi-account WhatsApp) on real infrastructure first.
+🚧 **Alpha — Phase 1 (client) in progress.** Phase 0 is proven: the self-hosted
+stack (Synapse + `mautrix-whatsapp`) runs on real infrastructure with instant
+sync and multi-account login. The native client (Tauri 2 + React +
+matrix-rust-sdk, in [`client/`](client/)) is now working: login, a live unified
+inbox with previews, search, and real avatars, two-way chat with optimistic
+send, session persistence across restarts, and Simplified Sliding Sync.
 
-➡️ **Want to run it?** The Phase 0 stack (Synapse + WhatsApp bridge) lives in
+➡️ **Want to run it?** The self-hosted stack (Synapse + WhatsApp bridge) lives in
 [`infra/`](infra/), with a step-by-step in **[SETUP.md](SETUP.md)** — including a
-fully free path on Oracle Cloud's Always Free tier.
+fully free path on Oracle Cloud's Always Free tier. The client runs from
+[`client/`](client/) with `npm install && npm run tauri dev`.
 
 **Roadmap**
 
-- **Phase 0 — Prove it:** Synapse + `mautrix-whatsapp` + an existing sliding-sync
-  client. Confirm zero-delay sync and multi-account login.
-- **Phase 1 — Client shell:** Tauri + React + matrix-rust-sdk. Unified inbox, fast
-  cold start, multi-account UI.
+- **Phase 0 — Prove it** ✅: Synapse + `mautrix-whatsapp` + an existing
+  sliding-sync client. Zero-delay sync and multi-account login confirmed.
+- **Phase 1 — Client shell** (in progress): Tauri + React + matrix-rust-sdk.
+  Live unified inbox, two-way chat, session persistence, sliding sync — done.
+  Fast cold start and multi-account UI — next.
 - **Phase 2 — Bridge ops:** reconnection, health monitoring, observability — the
   "non-buggy" promise.
 

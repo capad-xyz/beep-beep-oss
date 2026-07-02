@@ -22,6 +22,8 @@ use matrix::MatrixState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Desktop notifications (fired from matrix.rs on incoming messages).
+        .plugin(tauri_plugin_notification::init())
         // The window can open minimized if focus shifts during a (long) dev
         // build — force it visible + focused on startup so it never gets lost.
         .setup(|app| {

@@ -320,6 +320,83 @@ async fn start_sync(
         }
     });
 
+    // Desktop notifications for incoming messages. Gates, in cheap-first order:
+    // fresh event (skips history backfill), not our own, window unfocused, and
+    // the room isn't muted (push-rule check last — it's the costly one).
+    client.add_event_handler({
+        let app = app.clone();
+        move |ev: matrix_sdk::ruma::events::room::message::SyncRoomMessageEvent,
+              room: matrix_sdk::Room| {
+            let app = app.clone();
+            async move {
+                use matrix_sdk::notification_settings::RoomNotificationMode;
+                use matrix_sdk::ruma::events::room::message::MessageType;
+                use tauri::Manager;
+                use tauri_plugin_notification::NotificationExt;
+
+                let Some(original) = ev.as_original() else { return };
+
+                // Freshness: only notify for events younger than ~2 minutes, so
+                // initial sync / backfill can't fire a notification storm.
+                let fresh = original
+                    .origin_server_ts
+                    .to_system_time()
+                    .and_then(|t| std::time::SystemTime::now().duration_since(t).ok())
+                    .is_some_and(|age| age.as_secs() < 120);
+                if !fresh {
+                    return;
+                }
+
+                // Never notify for our own messages (incl. echoes from other devices).
+                let client = room.client();
+                if Some(original.sender.as_ref()) == client.user_id() {
+                    return;
+                }
+
+                // Only notify when the app isn't focused — if the user is looking
+                // at the app, the inbox/timeline already shows the message.
+                let focused = app
+                    .get_webview_window("main")
+                    .and_then(|w| w.is_focused().ok())
+                    .unwrap_or(false);
+                if focused {
+                    return;
+                }
+
+                // Muted rooms stay silent.
+                let mode = client
+                    .notification_settings()
+                    .await
+                    .get_user_defined_room_notification_mode(room.room_id())
+                    .await;
+                if mode == Some(RoomNotificationMode::Mute) {
+                    return;
+                }
+
+                let title = match room.display_name().await {
+                    Ok(dn) => dn.to_string(),
+                    Err(_) => "New message".to_string(),
+                };
+                let preview = match &original.content.msgtype {
+                    MessageType::Text(t) => t.body.clone(),
+                    MessageType::Image(_) => "[image]".into(),
+                    MessageType::Video(_) => "[video]".into(),
+                    MessageType::Audio(_) => "[voice message]".into(),
+                    MessageType::File(_) => "[file]".into(),
+                    other => other.body().to_string(),
+                };
+                let preview: String = preview.chars().take(120).collect();
+
+                let _ = app
+                    .notification()
+                    .builder()
+                    .title(title)
+                    .body(preview)
+                    .show();
+            }
+        }
+    });
+
     let mut updates = client.subscribe_to_all_room_updates();
     tauri::async_runtime::spawn(async move {
         loop {
@@ -1033,6 +1110,13 @@ pub async fn room_messages(
                         if img.body.is_empty() { "[image]".to_string() } else { img.body.clone() },
                         serde_json::to_string(&img.source).ok(),
                     ),
+                    // Same labeled-row treatment as the Timeline path.
+                    MessageType::Video(v) => (format!("[video] {}", v.body), None),
+                    MessageType::Audio(a) => (
+                        if a.body.is_empty() { "[voice message]".into() } else { format!("[audio] {}", a.body) },
+                        None,
+                    ),
+                    MessageType::File(f) => (format!("[file] {}", f.body), None),
                     _ => continue,
                 };
                 raw.push((
@@ -1480,6 +1564,14 @@ async fn timeline_item_to_chatline(
             if img.body.is_empty() { "[image]".to_string() } else { img.body.clone() },
             serde_json::to_string(&img.source).ok(),
         ),
+        // Other attachments render as labeled rows (no inline preview yet) so
+        // they at least EXIST in the conversation instead of being dropped.
+        MessageType::Video(v) => (format!("[video] {}", v.body), None),
+        MessageType::Audio(a) => (
+            if a.body.is_empty() { "[voice message]".into() } else { format!("[audio] {}", a.body) },
+            None,
+        ),
+        MessageType::File(f) => (format!("[file] {}", f.body), None),
         _ => return None,
     };
 

@@ -63,6 +63,14 @@ pub struct MatrixState {
     /// out). Without it, switching rooms fast could leave an old task still
     /// emitting the previous room's items over the shared "timeline-items" event.
     timeline_generation: Arc<AtomicU64>,
+    /// Serializes `open_room_timeline` calls. Building a Timeline awaits several
+    /// times BEFORE the generation bump + slot store, so two rapid open calls
+    /// (fast room switching — the frontend doesn't await the previous open) could
+    /// interleave and leave the WRONG room's Timeline parked in `open_timeline`
+    /// while the visible room's diff task retires: the conversation silently stops
+    /// updating and sends go to the wrong room. Tokio's Mutex is FIFO, so holding
+    /// this across the whole open preserves invocation order — last open wins.
+    open_timeline_lock: tokio::sync::Mutex<()>,
 }
 
 /// On-disk session for "stay logged in". The homeserver is saved alongside the
@@ -884,6 +892,11 @@ pub async fn logout(
     // Arc to the service (which keeps its state stream open), so without this it
     // would keep observing — and could try to restart — a service we've stopped.
     state.sync_generation.fetch_add(1, Ordering::SeqCst);
+    // Same for the open room's Timeline: retire its diff task and drop the handle,
+    // otherwise it lingers against the torn-down client and can emit stale
+    // "timeline-items" while the user is back on the login screen.
+    state.timeline_generation.fetch_add(1, Ordering::SeqCst);
+    *state.open_timeline.write().await = None;
     if let Some(sync) = state.sync_service.write().await.take() {
         let _ = sync.stop().await;
     }
@@ -1564,6 +1577,10 @@ pub async fn open_room_timeline(
 ) -> Result<(), String> {
     use matrix_sdk::ruma::RoomId;
     use matrix_sdk_ui::timeline::RoomExt;
+
+    // Serialize opens: see `open_timeline_lock`. Held to the end of this function
+    // (the spawned diff task is NOT covered — it doesn't touch the slot).
+    let _open_guard = state.open_timeline_lock.lock().await;
 
     let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
 

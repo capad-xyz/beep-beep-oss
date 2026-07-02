@@ -352,6 +352,10 @@ export default function App() {
     // The Rust side has already wiped the saved session file by the time this fires.
     track(
       listen("auth-invalid", () => {
+        // Retire the open room's Timeline backend-side too: the Rust auth-invalid
+        // path can't reach MatrixState, so without this the old diff task lingers
+        // and can emit stale items while we sit on the login screen.
+        closeRoomTimeline().catch(() => {});
         setUserId(null);
         setRooms([]);
         setOpenRoom(null);

@@ -40,7 +40,12 @@ services:
       retries: 12
 
   synapse:
-    image: ghcr.io/element-hq/synapse:latest
+    # Pinned (was :latest). 1.132 is the floor: it carries the appservice
+    # ping/backoff-reset fix, so a recovered WhatsApp bridge is retried
+    # immediately instead of being backed off for up to an hour
+    # (SYNC-HARDENING.md risk #10). v1.155.0 is the current stable line
+    # (2026-07). Bump this tag deliberately; do not float back to :latest.
+    image: ghcr.io/element-hq/synapse:v1.155.0
     restart: unless-stopped
     depends_on:
       postgres:

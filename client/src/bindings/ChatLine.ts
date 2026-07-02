@@ -13,4 +13,25 @@ sender_name: string, body: string,
  * Milliseconds since the Unix epoch (origin_server_ts). f64 so it maps to a
  * plain TS `number` for `new Date(ts)` — u64 would surface as `bigint`.
  */
-ts: number, };
+ts: number, 
+/**
+ * For image messages: an opaque handle (a serialized MediaSource) the UI
+ * passes to `fetch_media` to lazily load the picture. None for text. Lazy so
+ * opening a photo-heavy chat doesn't block on downloading every image at once.
+ */
+image: string | null, 
+/**
+ * The Matrix event id — the handle for reactions / reply / edit / delete.
+ * None only for optimistic echoes that haven't hit the server yet.
+ */
+event_id: string | null, 
+/**
+ * True when this message has been edited (an m.replace landed on it);
+ * `body` already contains the LATEST text.
+ */
+edited: boolean, 
+/**
+ * Reaction emoji on this message, one entry per reaction (duplicates mean
+ * multiple people used the same emoji — the UI groups and counts them).
+ */
+reactions: Array<string>, };

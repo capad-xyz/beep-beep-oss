@@ -34,6 +34,9 @@ ts-rs = "12"
 # Base64-encodes avatar thumbnails into data: URLs for the webview (room_avatar).
 base64 = "0.22"
 
+# MIME type for send_attachment (media sending).
+mime = "0.3"
+
 # AI layer (Inbox Intelligence). One HTTP client serves every backend because
 # AMD (vLLM/ROCm), Qwen Cloud (DashScope), DeepSeek and OpenAI all expose the
 # SAME OpenAI-compatible API — so providers differ only by {base_url, model, key}.

@@ -1,8 +1,10 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { login, listRooms, logout, roomMessages, sendMessage, roomAvatar, joinRoom, restoreSession } from "./api";
+import { login, listRooms, listAccounts, logout, roomMessages, sendMessage, sendReaction, editMessage, deleteMessage, markRead, setTyping, setPinned, setArchived, setMuted, sendMedia, searchMessages, roomAvatar, fetchMedia, joinRoom, acceptAllInvites, subscribeRoom, restoreSession } from "./api";
 import { listen } from "@tauri-apps/api/event";
 import type { RoomSummary } from "./bindings/RoomSummary";
 import type { ChatLine } from "./bindings/ChatLine";
+import type { Account } from "./bindings/Account";
+import type { SearchHit } from "./bindings/SearchHit";
 
 // Phase 1 inbox + read-only conversation view. Sending, multi-account, and the
 // AI layer come next.
@@ -123,12 +125,36 @@ function RoomAvatar({ id, label }: { id: string; label: string }) {
   );
 }
 
+// Session cache of resolved message-image data: URLs, keyed by the media handle.
+const mediaCache = new Map<string, string>();
+
+// Lazily fetches and renders an image message (e.g. the WhatsApp bridge QR code),
+// so opening a chat doesn't block on downloading every picture up front.
+function MessageImage({ source, alt }: { source: string; alt: string }) {
+  const [src, setSrc] = useState<string | null>(() => mediaCache.get(source) ?? null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const cached = mediaCache.get(source);
+    if (cached) { setSrc(cached); return; }
+    let alive = true;
+    fetchMedia(source)
+      .then((url) => { mediaCache.set(source, url); if (alive) setSrc(url); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [source]);
+  if (failed) return <span className="muted">[image unavailable]</span>;
+  if (!src) return <span className="muted">Loading image…</span>;
+  return <img className="msg-image" src={src} alt={alt} />;
+}
+
 export default function App() {
-  const [homeserver, setHomeserver] = useState("http://localhost:8008");
+  const [homeserver, setHomeserver] = useState("http://localhost:18008");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountFilter, setAccountFilter] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [openRoom, setOpenRoom] = useState<RoomSummary | null>(null);
@@ -137,6 +163,17 @@ export default function App() {
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [restoring, setRestoring] = useState(true);
+  // Message being replied to / edited (null = plain send), who's typing in the
+  // open room, and which message has its reaction picker open.
+  const [replyTo, setReplyTo] = useState<ChatLine | null>(null);
+  const [editing, setEditing] = useState<ChatLine | null>(null);
+  const [typingNames, setTypingNames] = useState<string[]>([]);
+  const [reactFor, setReactFor] = useState<string | null>(null);
+  // Archived-chats view toggle, global message-search results, upload state.
+  const [showArchived, setShowArchived] = useState(false);
+  const [searchHits, setSearchHits] = useState<SearchHit[] | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   // Latest open room, readable from the live-update listener without re-subscribing.
   const openRoomRef = useRef<RoomSummary | null>(null);
@@ -160,6 +197,40 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openRoom]);
 
+  // Open-room liveness: subscribe_room + "rooms-updated" is the fast path, but
+  // it proved unreliable (probe messages never arrived), so a light 3s re-pull
+  // of the open room is the guaranteed floor. Cheap: one /messages call for one
+  // room, only while a conversation is open. Revisit in the sync-hardening pass.
+  useEffect(() => {
+    if (!openRoom) return;
+    const id = setInterval(() => {
+      roomMessages(openRoom.id, 50).then(setMessages).catch(() => {});
+    }, 3000);
+    return () => clearInterval(id);
+  }, [openRoom]);
+
+  // Live "X is typing…" for the open room, emitted by the Rust typing handler.
+  useEffect(() => {
+    if (!openRoom) {
+      setTypingNames([]);
+      return;
+    }
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    listen<{ room_id: string; names: string[] }>("typing", (e) => {
+      const cur = openRoomRef.current;
+      if (cur && e.payload.room_id === cur.id) setTypingNames(e.payload.names);
+    }).then((fn) => {
+      if (alive) unlisten = fn;
+      else fn();
+    });
+    return () => {
+      alive = false;
+      unlisten?.();
+      setTypingNames([]);
+    };
+  }, [openRoom]);
+
   // LIVE INBOX: the backend emits "rooms-updated" after each sync touches a room;
   // re-pull the list so the inbox updates itself — no manual Refresh.
   useEffect(() => {
@@ -171,7 +242,11 @@ export default function App() {
       // If a conversation is open, re-pull its messages too, so bot replies +
       // incoming messages appear live there as well (not just the inbox list).
       const cur = openRoomRef.current;
-      if (cur) roomMessages(cur.id, 50).then(setMessages).catch(() => {});
+      if (cur) {
+        roomMessages(cur.id, 50).then(setMessages).catch(() => {});
+        // We're looking at this chat, so whatever just arrived is read.
+        markRead(cur.id).catch(() => {});
+      }
     }).then((fn) => {
       if (alive) unlisten = fn;
       else fn();
@@ -200,6 +275,7 @@ export default function App() {
         if (id) {
           setUserId(id);
           await refreshRooms();
+          acceptAllInvites().catch(() => {});
         }
       } catch {
         /* no / expired session — fall through to the login screen */
@@ -218,6 +294,9 @@ export default function App() {
       const id = await login(homeserver, username, password);
       setUserId(id);
       await refreshRooms();
+      // Auto-accept the bridge's chat/space invites so everything syncs without
+      // tapping each one. Runs in the background; the inbox fills in live.
+      acceptAllInvites().catch(() => {});
     } catch (err) {
       setError(String(err));
     } finally {
@@ -227,7 +306,9 @@ export default function App() {
 
   async function refreshRooms() {
     try {
-      setRooms(await listRooms());
+      const [r, a] = await Promise.all([listRooms(), listAccounts()]);
+      setRooms(r);
+      setAccounts(a);
     } catch (err) {
       setError(String(err));
     }
@@ -239,6 +320,22 @@ export default function App() {
     setRooms([]);
     setOpenRoom(null);
     setMessages([]);
+  }
+
+  // One-click "add account": open the bridge bot chat and kick off a QR login.
+  // The QR renders inline (image support), so you just scan it with a new phone.
+  async function addAccount() {
+    const bot = rooms.find((r) => displayName(r) === "WhatsApp bridge bot");
+    if (!bot) {
+      setError("Couldn't find the WhatsApp bridge bot chat. Hit Refresh and try again.");
+      return;
+    }
+    await openConversation(bot);
+    try {
+      await sendMessage(bot.id, "login qr");
+    } catch (e) {
+      setError(String(e));
+    }
   }
 
   async function openConversation(room: RoomSummary) {
@@ -253,11 +350,18 @@ export default function App() {
       }
     }
     setOpenRoom(room);
+    // Stream this room live via sliding sync (replaces the old 2.5s poll).
+    subscribeRoom(room.id).catch(() => {});
     setMessages([]);
     setError(null);
+    setReplyTo(null);
+    setEditing(null);
+    setReactFor(null);
     setLoadingMsgs(true);
     try {
       setMessages(await roomMessages(room.id, 50));
+      // Opening a chat reads it: clears our unread badge + shows read ticks.
+      markRead(room.id).catch(() => {});
     } catch (err) {
       setError(String(err));
     } finally {
@@ -270,17 +374,122 @@ export default function App() {
     const body = draft.trim();
     if (!openRoom || !userId || !body) return;
     setDraft("");
+    setTyping(openRoom.id, false).catch(() => {});
+
+    // Edit mode: replace the target message's text, no optimistic echo (the
+    // edited bubble updates in place on the next live refresh).
+    if (editing?.event_id) {
+      const target = editing;
+      setEditing(null);
+      try {
+        await editMessage(openRoom.id, target.event_id!, body);
+        setMessages(await roomMessages(openRoom.id, 50));
+      } catch (err) {
+        setError(String(err));
+        setDraft(body);
+      }
+      return;
+    }
+
+    const inReplyTo = replyTo?.event_id ?? undefined;
+    setReplyTo(null);
     // Optimistic echo: render the message instantly instead of waiting for a
     // full reload — sending should feel immediate. Rolled back if the send fails;
     // the next Refresh/open reconciles against the server copy.
-    const optimistic: ChatLine = { sender: userId, sender_name: "You", body, ts: Date.now() };
+    const optimistic: ChatLine = {
+      sender: userId, sender_name: "You", body, ts: Date.now(),
+      image: null, event_id: null, edited: false, reactions: [],
+    };
     setMessages((prev) => [...prev, optimistic]);
     try {
-      await sendMessage(openRoom.id, body);
+      await sendMessage(openRoom.id, body, inReplyTo);
     } catch (err) {
       setError(String(err));
       setDraft(body);
       setMessages((prev) => prev.filter((m) => m !== optimistic));
+    }
+  }
+
+  // Group raw reaction keys into (emoji, count) pairs for display.
+  function groupReactions(keys: string[]): [string, number][] {
+    const m = new Map<string, number>();
+    for (const k of keys) m.set(k, (m.get(k) ?? 0) + 1);
+    return [...m.entries()];
+  }
+
+  const QUICK_EMOJI = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+  async function react(m: ChatLine, key: string) {
+    if (!openRoom || !m.event_id) return;
+    setReactFor(null);
+    try {
+      await sendReaction(openRoom.id, m.event_id, key);
+      setMessages(await roomMessages(openRoom.id, 50));
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  async function removeMessage(m: ChatLine) {
+    if (!openRoom || !m.event_id) return;
+    if (!window.confirm("Delete this message?")) return;
+    try {
+      await deleteMessage(openRoom.id, m.event_id);
+      setMessages(await roomMessages(openRoom.id, 50));
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  // Toggle a room flag (pin/mute/archive) then re-pull so the inbox reflects it.
+  async function toggleRoomFlag(
+    r: RoomSummary,
+    kind: "pin" | "mute" | "archive",
+  ) {
+    try {
+      if (kind === "pin") await setPinned(r.id, !r.pinned);
+      if (kind === "mute") await setMuted(r.id, !r.muted);
+      if (kind === "archive") await setArchived(r.id, !r.archived);
+      await refreshRooms();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
+  // Attach a file: read it as base64 and hand it to the send queue.
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!file || !openRoom) return;
+    setUploading(true);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result as string);
+        fr.onerror = () => reject(fr.error);
+        fr.readAsDataURL(file);
+      });
+      const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+      await sendMedia(openRoom.id, file.name, file.type || "application/octet-stream", base64);
+      setMessages(await roomMessages(openRoom.id, 50));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // Enter in the search box = full-text search across ALL chats (server-side).
+  async function runGlobalSearch() {
+    const q = query.trim();
+    if (!q) {
+      setSearchHits(null);
+      return;
+    }
+    try {
+      setSearchHits(await searchMessages(q, 20));
+    } catch (err) {
+      setError(String(err));
     }
   }
 
@@ -359,43 +568,128 @@ export default function App() {
                   {!own && !grouped && (
                     <span className="msg-sender">{m.sender_name}</span>
                   )}
-                  <span className="msg-body">{m.body}</span>
-                  <span className="msg-time">{formatTime(m.ts)}</span>
+                  {m.image ? (
+                    <>
+                      <MessageImage source={m.image} alt={m.body} />
+                      {m.body && m.body !== "[image]" && (
+                        <span className="msg-body">{m.body}</span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="msg-body">{m.body}</span>
+                  )}
+                  {m.reactions.length > 0 && (
+                    <span className="msg-reactions">
+                      {groupReactions(m.reactions).map(([k, n]) => (
+                        <span key={k} className="reaction-chip">
+                          {k}{n > 1 ? ` ${n}` : ""}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                  <span className="msg-time">
+                    {m.edited && <span className="edited">edited · </span>}
+                    {formatTime(m.ts)}
+                  </span>
+                  {m.event_id && (
+                    <span className="msg-actions">
+                      <button type="button" onClick={() => setReactFor(reactFor === m.event_id ? null : m.event_id)}>React</button>
+                      <button type="button" onClick={() => { setReplyTo(m); setEditing(null); }}>Reply</button>
+                      {own && (
+                        <button type="button" onClick={() => { setEditing(m); setReplyTo(null); setDraft(m.body); }}>Edit</button>
+                      )}
+                      {own && (
+                        <button type="button" onClick={() => removeMessage(m)}>Del</button>
+                      )}
+                    </span>
+                  )}
+                  {m.event_id && reactFor === m.event_id && (
+                    <span className="react-picker">
+                      {QUICK_EMOJI.map((k) => (
+                        <button key={k} type="button" onClick={() => react(m, k)}>{k}</button>
+                      ))}
+                    </span>
+                  )}
                 </div>
               </Fragment>
             );
           })}
           <div ref={bottomRef} />
         </div>
+        {typingNames.length > 0 && (
+          <p className="typing-line">
+            {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…
+          </p>
+        )}
+        {(replyTo || editing) && (
+          <div className="compose-context">
+            <span>
+              {editing ? "Editing" : `Replying to ${replyTo!.sender_name}`}:{" "}
+              <span className="muted">{(editing ?? replyTo)!.body.slice(0, 80)}</span>
+            </span>
+            <button
+              className="ghost"
+              type="button"
+              onClick={() => { if (editing) setDraft(""); setReplyTo(null); setEditing(null); }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
         <form className="composer" onSubmit={handleSend}>
+          <input ref={fileRef} type="file" style={{ display: "none" }} onChange={handleFile} />
+          <button
+            type="button"
+            className="ghost attach"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+            title="Send a file"
+          >
+            {uploading ? "…" : "+"}
+          </button>
           <input
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="Type a message…"
+            onChange={(e) => {
+              setDraft(e.target.value);
+              // Typing notice; the SDK rate-limits repeats so per-keystroke is fine.
+              if (openRoom) setTyping(openRoom.id, true).catch(() => {});
+            }}
+            placeholder={editing ? "Edit message…" : "Type a message…"}
             autoFocus
           />
-          <button type="submit" disabled={!draft.trim()}>Send</button>
+          <button type="submit" disabled={!draft.trim()}>{editing ? "Save" : "Send"}</button>
         </form>
       </div>
     );
   }
 
   // ---- Inbox ----
-  const totalUnread = rooms.reduce((sum, r) => sum + Number(r.unread), 0);
+  // Muted chats don't contribute to the unread total (that's the point of mute).
+  const totalUnread = rooms.reduce((sum, r) => sum + (r.muted ? 0 : Number(r.unread)), 0);
+  const accountLabel = new Map(accounts.map((a) => [a.id, a.label]));
+  const archivedCount = rooms.filter((r) => r.archived).length;
   const sorted = [...rooms].sort((a, b) => {
+    // Pinned chats first, then most recent activity.
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
     const at = a.last_ts ?? 0;
     const bt = b.last_ts ?? 0;
-    if (at !== bt) return bt - at; // most recent activity first
+    if (at !== bt) return bt - at;
     return displayName(a).localeCompare(displayName(b));
   });
+  // Archived chats live behind the Archived toggle; otherwise hidden.
+  const byArchive = sorted.filter((r) => (showArchived ? r.archived : !r.archived));
+  // Per-account filter (null = all accounts).
+  const byAccount = accountFilter
+    ? byArchive.filter((r) => r.account === accountFilter)
+    : byArchive;
   const q = query.trim().toLowerCase();
   const filtered = q
-    ? sorted.filter(
+    ? byAccount.filter(
         (r) =>
           displayName(r).toLowerCase().includes(q) ||
           (r.last_message ?? "").toLowerCase().includes(q)
       )
-    : sorted;
+    : byAccount;
 
   return (
     <div className="app">
@@ -405,7 +699,8 @@ export default function App() {
         </div>
         <div className="account">
           <span className="muted">{userId}</span>
-          <button className="ghost" onClick={refreshRooms}>Refresh</button>
+          <button className="ghost" onClick={addAccount}>+ Account</button>
+          <button className="ghost" onClick={() => { acceptAllInvites().catch(() => {}); refreshRooms(); }}>Refresh</button>
           <button className="ghost" onClick={handleLogout}>Sign out</button>
         </div>
       </header>
@@ -419,19 +714,81 @@ export default function App() {
 
       <input
         className="search"
-        placeholder="Search chats…"
+        placeholder="Search chats… (Enter searches all messages)"
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          if (!e.target.value.trim()) setSearchHits(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") runGlobalSearch();
+        }}
       />
 
+      {accounts.length > 0 && (
+        <div className="account-filter">
+          <button
+            className={accountFilter === null ? "chip active" : "chip"}
+            onClick={() => setAccountFilter(null)}
+          >
+            All
+          </button>
+          {accounts.map((a) => (
+            <button
+              key={a.id}
+              className={accountFilter === a.id ? "chip active" : "chip"}
+              onClick={() => setAccountFilter(a.id)}
+              title={a.id}
+            >
+              {a.label}
+            </button>
+          ))}
+          {archivedCount > 0 && (
+            <button
+              className={showArchived ? "chip active" : "chip"}
+              onClick={() => setShowArchived((v) => !v)}
+            >
+              Archived ({archivedCount})
+            </button>
+          )}
+        </div>
+      )}
+
       {error && <p className="error">{error}</p>}
+
+      {searchHits !== null && (
+        <div className="hits">
+          <div className="hits-head">
+            <span className="muted">
+              {searchHits.length} message{searchHits.length === 1 ? "" : "s"} matching "{query.trim()}"
+            </span>
+            <button className="ghost" onClick={() => setSearchHits(null)}>Clear</button>
+          </div>
+          {searchHits.map((h, i) => (
+            <div
+              key={i}
+              className="hit"
+              onClick={() => {
+                const room = rooms.find((r) => r.id === h.room_id);
+                if (room) openConversation(room);
+              }}
+            >
+              <span className="hit-room">{h.room_name ?? h.sender_name}</span>
+              <span className="hit-body">{h.body}</span>
+              <span className="room-time">{relTime(h.ts)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <ul className="rooms">
         {rooms.length === 0 && (
           <li className="empty muted">No rooms yet — sync may still be running. Hit Refresh.</li>
         )}
         {rooms.length > 0 && filtered.length === 0 && (
-          <li className="empty muted">No chats match “{query}”.</li>
+          <li className="empty muted">
+            {q ? `No chats match "${query}".` : "No chats for this account."}
+          </li>
         )}
         {filtered.map((r) => {
           const label = displayName(r);
@@ -444,17 +801,37 @@ export default function App() {
             >
               <RoomAvatar id={r.id} label={label} />
               <div className="room-main">
-                <span className="room-name">{label}</span>
+                <span className="room-name">
+                  {r.pinned && <span className="flag-tag">PIN</span>}
+                  {label}
+                  {r.muted && <span className="flag-tag">MUTED</span>}
+                  {accounts.length > 1 && r.account && (
+                    <span className="acct-tag">{accountLabel.get(r.account) ?? "?"}</span>
+                  )}
+                </span>
                 {!joined ? (
                   <span className="room-preview">Tap to accept invite</span>
                 ) : (
                   r.last_message && <span className="room-preview">{r.last_message}</span>
                 )}
               </div>
+              <span className="row-actions" onClick={(e) => e.stopPropagation()}>
+                <button type="button" onClick={() => toggleRoomFlag(r, "pin")}>
+                  {r.pinned ? "Unpin" : "Pin"}
+                </button>
+                <button type="button" onClick={() => toggleRoomFlag(r, "mute")}>
+                  {r.muted ? "Unmute" : "Mute"}
+                </button>
+                <button type="button" onClick={() => toggleRoomFlag(r, "archive")}>
+                  {r.archived ? "Unarch" : "Arch"}
+                </button>
+              </span>
               <div className="room-meta">
                 {!joined && <span className="badge invite">Invite</span>}
                 {joined && r.last_ts != null && <span className="room-time">{relTime(r.last_ts)}</span>}
-                {joined && r.unread > 0 && <span className="badge">{Number(r.unread)}</span>}
+                {joined && r.unread > 0 && (
+                  <span className={r.muted ? "badge dim" : "badge"}>{Number(r.unread)}</span>
+                )}
               </div>
             </li>
           );

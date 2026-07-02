@@ -29,4 +29,22 @@ last_message: string | null,
  * Timestamp (ms since epoch) of that latest message — drives recency sort
  * and a relative "2m / 3h / Mon" label in the inbox. f64 → plain TS number.
  */
-last_ts: number | null, };
+last_ts: number | null, 
+/**
+ * The account (WhatsApp login) this chat belongs to, as the backing bridge
+ * Space's room id. None for rooms not inside any account Space (e.g. the
+ * bridge management room). The UI maps the id to a label via list_accounts.
+ */
+account: string | null, 
+/**
+ * m.favourite tag — pinned chats sort first in the inbox.
+ */
+pinned: boolean, 
+/**
+ * m.lowpriority tag — archived chats are hidden behind the Archived filter.
+ */
+archived: boolean, 
+/**
+ * Per-room push rule set to Mute.
+ */
+muted: boolean, };

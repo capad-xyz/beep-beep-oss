@@ -9,5 +9,10 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    watch: {
+      // Never watch the Rust project or its build output: on Windows the linker
+      // locks target/*.pdb mid-build, which crashes Vite's fs watcher (EBUSY).
+      ignored: ["**/src-tauri/**"],
+    },
   },
 });

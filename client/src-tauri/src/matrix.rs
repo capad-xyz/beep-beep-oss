@@ -13,11 +13,12 @@
 //! and fix any renamed items the compiler points at. Spots most likely to need a
 //! tweak are marked with `// VERIFY:`.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use matrix_sdk::{authentication::matrix::MatrixSession, ruma::OwnedUserId, store::RoomLoadSettings, Client};
-use matrix_sdk_ui::sync_service::SyncService;
+use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
@@ -35,6 +36,13 @@ pub struct MatrixState {
     /// The Simplified Sliding Sync engine. It must be kept alive for the app's
     /// lifetime (dropping it stops sync), so it lives in state beside the client.
     sync_service: RwLock<Option<Arc<SyncService>>>,
+    /// Monotonic id of the *current* SyncService. `start_sync` bumps this on every
+    /// login/restore and hands the fresh value to the observer task it spawns. The
+    /// observer compares it against this counter after each state change and exits
+    /// the moment it no longer matches — so when a new login replaces the service,
+    /// the previous observer retires itself instead of two observers fighting to
+    /// restart different (one of them dead) services. See `spawn_sync_observer`.
+    sync_generation: Arc<AtomicU64>,
 }
 
 /// On-disk session for "stay logged in". The homeserver is saved alongside the
@@ -53,15 +61,206 @@ fn data_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     Ok(dir)
 }
 
+/// Does this Matrix error mean our session is no longer valid on the server?
+///
+/// The homeserver answers a request made with a dead access token with HTTP 401 +
+/// `errcode: M_UNKNOWN_TOKEN` — this happens when the session is revoked remotely,
+/// the device is deleted, or the token simply expired. There is nothing the client
+/// can retry its way out of: the only cure is a fresh login. We treat `soft_logout`
+/// the same as a hard one here — in both cases the current token is unusable and
+/// the user must re-authenticate — so a single code path covers both.
+///
+/// `client_api_error_kind()` peels the ruma `errcode` out of whatever layer the
+/// error surfaced from (a plain command, or a sliding-sync failure wrapped inside
+/// the SyncService error), so one check works for every entry point.
+fn is_auth_invalid(err: &matrix_sdk::Error) -> bool {
+    use matrix_sdk::ruma::api::error::ErrorKind;
+    matches!(err.client_api_error_kind(), Some(ErrorKind::UnknownToken { .. }))
+}
+
+/// The same M_UNKNOWN_TOKEN check, but for the error the SyncService reports in
+/// `State::Error`. That is the UI crate's own error enum, which wraps the real
+/// underlying failure: a dead token surfaces as a sliding-sync request failing,
+/// i.e. `RoomList`/`EncryptionSync` → `SlidingSync(matrix_sdk::Error)`. We reach
+/// through to that inner `matrix_sdk::Error` and reuse `is_auth_invalid`. Any
+/// other error shape (a supervisor bug, etc.) is not an auth problem.
+fn sync_error_is_auth_invalid(err: &matrix_sdk_ui::sync_service::Error) -> bool {
+    use matrix_sdk_ui::{
+        encryption_sync_service::Error as EncErr, room_list_service::Error as RoomErr,
+        sync_service::Error as SyncErr,
+    };
+    let inner = match err {
+        SyncErr::RoomList(RoomErr::SlidingSync(e)) => Some(e),
+        SyncErr::EncryptionSync(EncErr::SlidingSync(e)) => Some(e),
+        _ => None,
+    };
+    inner.is_some_and(is_auth_invalid)
+}
+
+/// React to a confirmed auth invalidation (M_UNKNOWN_TOKEN): wipe the saved
+/// session so the next launch shows the login screen (not a broken restore), and
+/// tell the frontend to drop back to login with an "expired" message. Idempotent —
+/// safe to call from every place that can observe the failure (a command, or the
+/// sync observer), because deleting an already-deleted file and emitting a second
+/// event both no-op harmlessly.
+fn handle_auth_invalid(app: &tauri::AppHandle) {
+    if let Ok(dir) = data_dir(app) {
+        let _ = std::fs::remove_file(dir.join("session.json"));
+    }
+    let _ = app.emit("auth-invalid", ());
+}
+
+/// Central error mapping for Tauri commands: stringify a Matrix error for the UI,
+/// AND, if it's an auth invalidation, fire the same re-login flow the sync observer
+/// uses. This means a command that trips over a dead token (e.g. the user sends a
+/// message right as the session is revoked) surfaces the "session expired" flow
+/// immediately, without waiting for the next sync tick to notice. Idempotent: if
+/// the sync observer already fired `auth-invalid`, a second emit is harmless.
+fn map_matrix_err(app: &tauri::AppHandle, err: matrix_sdk::Error) -> String {
+    if is_auth_invalid(&err) {
+        handle_auth_invalid(app);
+    }
+    err.to_string()
+}
+
+/// Map the four `SyncService` states we care about to the stable string the UI
+/// listens for. `Idle` is folded into "reconnecting" because the only time the
+/// observer sees `Idle` after a start is the brief window while a restart spins
+/// back up — from the user's point of view that's "reconnecting", not a distinct
+/// state worth its own pill. Returns None for `Running`, whose meaning ("all good")
+/// the UI shows by hiding the pill entirely.
+fn sync_state_label(state: &SyncState) -> Option<&'static str> {
+    match state {
+        SyncState::Running => None,
+        SyncState::Offline => Some("offline"),
+        SyncState::Terminated => Some("terminated"),
+        SyncState::Error(_) => Some("reconnecting"),
+        SyncState::Idle => Some("reconnecting"),
+    }
+}
+
+/// Watch one SyncService's state stream and keep sync alive across drops.
+///
+/// WHY THIS EXISTS
+/// `SyncService::start()` launches background tasks, but nothing inside the SDK
+/// resurrects them if they die: a network drop, a laptop sleep/wake, or a server
+/// hiccup can push the service into `Error`/`Terminated`, after which the app
+/// looks alive but silently never syncs again. This task closes that gap — it
+/// observes every state change, restarts on the terminal ones with exponential
+/// backoff, and emits `sync-state` so the UI can show "Reconnecting…"/"Offline".
+///
+/// GENERATION GUARD (no double observers)
+/// `start_sync` is called once per login/restore, each time replacing the service
+/// in `MatrixState`. The observer holds an `Arc<SyncService>`, which keeps the OLD
+/// service alive, so its stream would never end on its own — two observers could
+/// then both try to restart their (one now-orphaned) service. To prevent that,
+/// every `start_sync` bumps `sync_generation` and passes its value in as `my_gen`;
+/// after each state change this task checks the shared counter and returns the
+/// instant it no longer owns the current generation. The newest observer always
+/// wins; older ones retire themselves.
+fn spawn_sync_observer(
+    sync_service: Arc<SyncService>,
+    generation: Arc<AtomicU64>,
+    my_gen: u64,
+    app: tauri::AppHandle,
+) {
+    tauri::async_runtime::spawn(async move {
+        let mut states = sync_service.state();
+        // Retry delay for the auto-restart, doubling on each consecutive failure
+        // and capped so we never wait more than a minute between attempts.
+        let mut backoff = Duration::from_secs(1);
+        const MAX_BACKOFF: Duration = Duration::from_secs(60);
+
+        loop {
+            // A new login replaced us — stop before touching a service we no longer own.
+            if generation.load(Ordering::SeqCst) != my_gen {
+                break;
+            }
+
+            let state = match states.next().await {
+                // The state changed: react to the new value below.
+                Some(state) => state,
+                // The observable was dropped (the SyncService is gone, e.g. on
+                // logout). Nothing left to watch, so the observer ends here.
+                None => break,
+            };
+
+            // Re-check after the await: the state may have changed *because* a new
+            // login is tearing the old service down. Don't restart a dead service.
+            if generation.load(Ordering::SeqCst) != my_gen {
+                break;
+            }
+
+            // Surface the new state to the UI (pill shows only when not Running).
+            if let Some(label) = sync_state_label(&state) {
+                let _ = app.emit("sync-state", label);
+            } else {
+                let _ = app.emit("sync-state", "running");
+            }
+
+            match state {
+                // Healthy again: clear the pill and reset backoff so the *next*
+                // failure starts from 1s, not wherever the last storm left off.
+                SyncState::Running => {
+                    backoff = Duration::from_secs(1);
+                }
+                // Offline mode is the SDK's own recovery loop (it polls
+                // /versions and self-heals), so we don't fight it with a restart —
+                // we only reflect it in the UI and wait for it to return to Running.
+                SyncState::Offline | SyncState::Idle => {}
+                // Terminal failures. If the cause is a dead token, no amount of
+                // restarting helps — divert to the re-login flow. Otherwise, wait
+                // out the backoff and restart the service.
+                SyncState::Terminated | SyncState::Error(_) => {
+                    if let SyncState::Error(err) = &state {
+                        if sync_error_is_auth_invalid(err) {
+                            handle_auth_invalid(&app);
+                            break;
+                        }
+                    }
+                    tokio::time::sleep(backoff).await;
+                    if generation.load(Ordering::SeqCst) != my_gen {
+                        break;
+                    }
+                    // `start()` is a no-op if already Running and does the right
+                    // cleanup/restart from Terminated/Error/Offline (see its docs).
+                    sync_service.start().await;
+                    backoff = (backoff * 2).min(MAX_BACKOFF);
+                }
+            }
+        }
+    });
+}
+
 /// Build + start Simplified Sliding Sync for `client`, and wire its updates to a
 /// debounced "rooms-updated" Tauri event so the UI stays live. Returns the
 /// SyncService (kept alive in state). Shared by login + restore_session.
-async fn start_sync(client: &Client, app: tauri::AppHandle) -> Result<Arc<SyncService>, String> {
+///
+/// `generation` is `MatrixState.sync_generation`: we bump it here so the observer
+/// this call spawns can tell whether it still owns the live service (see
+/// `spawn_sync_observer`).
+async fn start_sync(
+    client: &Client,
+    app: tauri::AppHandle,
+    generation: Arc<AtomicU64>,
+) -> Result<Arc<SyncService>, String> {
     let sync_service = SyncService::builder(client.clone())
+        // Enable the SDK's offline mode: instead of hard-terminating when the
+        // server is unreachable, the service enters `Offline` and polls
+        // /_matrix/client/versions until it can sync again — so a transient network
+        // drop self-heals and we surface it as "offline" rather than "reconnecting".
+        .with_offline_mode()
         .build()
         .await
         .map_err(|e| e.to_string())?;
+    let sync_service = Arc::new(sync_service);
     sync_service.start().await;
+
+    // Claim a new generation for this service and start watching its lifecycle.
+    // Ordering::SeqCst: the observer reads this from another task, and we want the
+    // bump to be visible before the observer it spawns runs its first check.
+    let my_gen = generation.fetch_add(1, Ordering::SeqCst) + 1;
+    spawn_sync_observer(sync_service.clone(), generation, my_gen, app.clone());
 
     // Live "X is typing…" — typing events arrive via sliding sync's typing
     // extension; resolve display names and forward to the UI per room.
@@ -123,7 +322,7 @@ async fn start_sync(client: &Client, app: tauri::AppHandle) -> Result<Arc<SyncSe
         }
     });
 
-    Ok(Arc::new(sync_service))
+    Ok(sync_service)
 }
 
 /// A minimal, serializable view of a room for the UI.
@@ -185,6 +384,27 @@ pub struct Account {
     pub label: String,
 }
 
+/// The result of trying to restore a saved session on launch.
+///
+/// WHY A TYPE INSTEAD OF `Option<String>`
+/// Restore can end three ways, and the login screen must tell them apart:
+///   - there was no saved session at all → show a plain login form,
+///   - a session existed but the server rejected it (revoked/expired token) →
+///     show "Session expired, please log in again",
+///   - it worked → skip login and go straight to the inbox.
+///
+/// The old `Option<String>` collapsed the first two into `None`, so the UI could
+/// never show the "expired" message. `status` names the outcome; `user_id` is set
+/// only for `restored`.
+#[derive(Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct RestoreOutcome {
+    /// One of: "restored" | "none" | "expired".
+    pub status: String,
+    /// The Matrix user id, present only when `status == "restored"`.
+    pub user_id: Option<String>,
+}
+
 /// Log in with username + password and start syncing.
 ///
 /// `homeserver` is e.g. `http://localhost:8008` (Phase 0 local) or
@@ -230,24 +450,29 @@ pub async fn login(
     }
 
     // Sliding sync + live "rooms-updated" events (shared with restore_session).
-    let svc = start_sync(&client, app.clone()).await?;
+    let svc = start_sync(&client, app.clone(), state.sync_generation.clone()).await?;
     *state.sync_service.write().await = Some(svc);
 
     *state.client.write().await = Some(client);
     Ok(user_id.to_string())
 }
 
-/// Try to restore a persisted session (stay logged in across restarts). Returns
-/// the user id on success, or None when there is no saved session to restore.
+/// Try to restore a persisted session (stay logged in across restarts).
+///
+/// Returns a `RestoreOutcome` distinguishing the three cases the login screen
+/// needs (no session / expired session / restored) — see that type. A rejected
+/// token (M_UNKNOWN_TOKEN) is NOT a hard error: we wipe the dead session and
+/// report "expired" so the UI can prompt a fresh login, rather than bubbling an
+/// opaque error string.
 #[tauri::command]
 pub async fn restore_session(
     state: tauri::State<'_, MatrixState>,
     app: tauri::AppHandle,
-) -> Result<Option<String>, String> {
+) -> Result<RestoreOutcome, String> {
     let dir = data_dir(&app)?;
     let path = dir.join("session.json");
     if !path.exists() {
-        return Ok(None);
+        return Ok(RestoreOutcome { status: "none".into(), user_id: None });
     }
 
     let json = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
@@ -260,18 +485,28 @@ pub async fn restore_session(
         .await
         .map_err(|e| e.to_string())?;
 
-    client
+    // A restore that fails on a dead token isn't an app error — it's an expired
+    // login. Wipe the stale session file and report "expired" so the login screen
+    // shows the right message. Any other error (network, corrupt store) still
+    // bubbles up as a real error string.
+    if let Err(err) = client
         .matrix_auth()
         .restore_session(saved.session, RoomLoadSettings::default())
         .await
-        .map_err(|e| e.to_string())?;
+    {
+        if is_auth_invalid(&err) {
+            let _ = std::fs::remove_file(&path);
+            return Ok(RestoreOutcome { status: "expired".into(), user_id: None });
+        }
+        return Err(err.to_string());
+    }
 
     let user_id: OwnedUserId = client.user_id().ok_or("no user id after restore")?.to_owned();
 
-    let svc = start_sync(&client, app.clone()).await?;
+    let svc = start_sync(&client, app.clone(), state.sync_generation.clone()).await?;
     *state.sync_service.write().await = Some(svc);
     *state.client.write().await = Some(client);
-    Ok(Some(user_id.to_string()))
+    Ok(RestoreOutcome { status: "restored".into(), user_id: Some(user_id.to_string()) })
 }
 
 /// Return the current room list for the UI.
@@ -625,6 +860,10 @@ pub async fn logout(
     if let Ok(dir) = data_dir(&app) {
         let _ = std::fs::remove_file(dir.join("session.json"));
     }
+    // Bump the generation so the running sync observer retires itself: it holds an
+    // Arc to the service (which keeps its state stream open), so without this it
+    // would keep observing — and could try to restart — a service we've stopped.
+    state.sync_generation.fetch_add(1, Ordering::SeqCst);
     if let Some(sync) = state.sync_service.write().await.take() {
         let _ = sync.stop().await;
     }
@@ -814,6 +1053,7 @@ pub async fn room_messages(
 #[tauri::command]
 pub async fn send_message(
     state: tauri::State<'_, MatrixState>,
+    app: tauri::AppHandle,
     room_id: String,
     body: String,
     reply_to: Option<String>,
@@ -834,7 +1074,9 @@ pub async fn send_message(
         content.relates_to = Some(Relation::Reply(Reply::with_event_id(eid)));
     }
 
-    room.send(content).await.map_err(|e| e.to_string())?;
+    // Routed through `map_matrix_err` so a send that fails on a revoked token fires
+    // the re-login flow at once, instead of only surfacing on the next sync tick.
+    room.send(content).await.map_err(|e| map_matrix_err(&app, e))?;
     Ok(())
 }
 

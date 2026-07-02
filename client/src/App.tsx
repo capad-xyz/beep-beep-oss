@@ -147,6 +147,20 @@ function MessageImage({ source, alt }: { source: string; alt: string }) {
   return <img className="msg-image" src={src} alt={alt} />;
 }
 
+// Unobtrusive topbar pill shown only when sync is NOT healthy. `state` is the
+// raw "sync-state" payload from Rust (null when running = pill hidden).
+function SyncPill({ state }: { state: string | null }) {
+  if (!state) return null;
+  // "offline" gets a dimmer look + its own label; "terminated" and "reconnecting"
+  // both read as actively recovering, so they share the "Reconnecting…" label.
+  const offline = state === "offline";
+  return (
+    <span className={offline ? "sync-pill offline" : "sync-pill"}>
+      {offline ? "Offline" : "Reconnecting…"}
+    </span>
+  );
+}
+
 export default function App() {
   const [homeserver, setHomeserver] = useState("http://localhost:18008");
   const [username, setUsername] = useState("");
@@ -163,6 +177,13 @@ export default function App() {
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [restoring, setRestoring] = useState(true);
+  // Sync lifecycle: the Rust sync observer emits "sync-state" whenever the sliding
+  // sync engine's health changes. "running" (or null) = healthy → no pill; the
+  // other values render an unobtrusive status pill in the topbar. See matrix.rs.
+  const [syncState, setSyncState] = useState<string | null>(null);
+  // Set when a saved session was rejected by the server (or the token is revoked
+  // mid-session): the login screen shows "Session expired, please log in again".
+  const [sessionExpired, setSessionExpired] = useState(false);
   // Message being replied to / edited (null = plain send), who's typing in the
   // open room, and which message has its reaction picker open.
   const [replyTo, setReplyTo] = useState<ChatLine | null>(null);
@@ -267,18 +288,23 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
 
-  // On launch, try to restore a saved session so we skip the login screen.
+  // On launch, try to restore a saved session so we skip the login screen. The
+  // outcome is three-way: "restored" → go straight to the inbox; "expired" → the
+  // saved session was rejected, so show login with the expired message; "none" →
+  // no saved session, plain login screen.
   useEffect(() => {
     (async () => {
       try {
-        const id = await restoreSession();
-        if (id) {
-          setUserId(id);
+        const outcome = await restoreSession();
+        if (outcome.status === "restored" && outcome.user_id) {
+          setUserId(outcome.user_id);
           await refreshRooms();
           acceptAllInvites().catch(() => {});
+        } else if (outcome.status === "expired") {
+          setSessionExpired(true);
         }
       } catch {
-        /* no / expired session — fall through to the login screen */
+        /* unexpected restore error — fall through to the login screen */
       } finally {
         setRestoring(false);
       }
@@ -286,9 +312,47 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Sync-lifecycle + auth-invalidation events from the Rust core. Attached once
+  // for the app's lifetime (not gated on login) so a "sync-state" that fires
+  // during the initial post-login sync is never missed.
+  useEffect(() => {
+    let alive = true;
+    const unlisteners: (() => void)[] = [];
+    const track = (p: Promise<() => void>) =>
+      p.then((fn) => {
+        if (alive) unlisteners.push(fn);
+        else fn();
+      });
+
+    // Health of the sliding sync engine → drives the topbar status pill.
+    track(
+      listen<string>("sync-state", (e) => {
+        setSyncState(e.payload === "running" ? null : e.payload);
+      })
+    );
+    // The server rejected our token: drop to the login screen with a clear reason.
+    // The Rust side has already wiped the saved session file by the time this fires.
+    track(
+      listen("auth-invalid", () => {
+        setUserId(null);
+        setRooms([]);
+        setOpenRoom(null);
+        setMessages([]);
+        setSyncState(null);
+        setSessionExpired(true);
+      })
+    );
+
+    return () => {
+      alive = false;
+      unlisteners.forEach((fn) => fn());
+    };
+  }, []);
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setSessionExpired(false);
     setBusy(true);
     try {
       const id = await login(homeserver, username, password);
@@ -509,6 +573,9 @@ export default function App() {
       <main className="center">
         <h1>beep-beep</h1>
         <p className="muted">Sign in to your homeserver</p>
+        {sessionExpired && (
+          <p className="notice">Session expired, please log in again.</p>
+        )}
         <form onSubmit={handleLogin} className="card">
           <label>
             Homeserver
@@ -542,7 +609,10 @@ export default function App() {
         <header className="topbar">
           <button className="ghost" onClick={() => { setOpenRoom(null); setError(null); }}>← Inbox</button>
           <strong className="convo-title">{displayName(openRoom)}</strong>
-          <button className="ghost" onClick={() => openConversation(openRoom)}>Refresh</button>
+          <span className="topbar-right">
+            <SyncPill state={syncState} />
+            <button className="ghost" onClick={() => openConversation(openRoom)}>Refresh</button>
+          </span>
         </header>
         {error && <p className="error">{error}</p>}
         <div className="convo">
@@ -698,6 +768,7 @@ export default function App() {
           <span className="logo">bb</span> beep-beep
         </div>
         <div className="account">
+          <SyncPill state={syncState} />
           <span className="muted">{userId}</span>
           <button className="ghost" onClick={addAccount}>+ Account</button>
           <button className="ghost" onClick={() => { acceptAllInvites().catch(() => {}); refreshRooms(); }}>Refresh</button>

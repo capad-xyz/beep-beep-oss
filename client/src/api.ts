@@ -9,6 +9,7 @@ import type { RoomSummary } from "./bindings/RoomSummary";
 import type { ChatLine } from "./bindings/ChatLine";
 import type { Account } from "./bindings/Account";
 import type { SearchHit } from "./bindings/SearchHit";
+import type { RestoreOutcome } from "./bindings/RestoreOutcome";
 
 /** Log in to a homeserver. Returns the full Matrix user id (@you:server). */
 export async function login(
@@ -19,9 +20,14 @@ export async function login(
   return invoke<string>("login", { homeserver, username, password });
 }
 
-/** Try to restore a saved session. Returns the user id, or null if none. */
-export async function restoreSession(): Promise<string | null> {
-  return invoke<string | null>("restore_session");
+/**
+ * Try to restore a saved session on launch. Returns a `RestoreOutcome` telling
+ * apart "restored" (with user_id), "none" (no saved session), and "expired" (the
+ * saved session was rejected by the server) — so the login screen can show the
+ * "session expired" message only in the last case.
+ */
+export async function restoreSession(): Promise<RestoreOutcome> {
+  return invoke<RestoreOutcome>("restore_session");
 }
 
 /** Fetch the current room list. */

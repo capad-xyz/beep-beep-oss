@@ -294,3 +294,34 @@ button:disabled { opacity: 0.6; cursor: default; }
   font-weight: 600;
   vertical-align: middle;
 }
+
+/* ---------- Sync lifecycle ---------- */
+/* Login-screen banner: a saved session was rejected / the token expired. */
+.notice {
+  margin: 0.25rem 0.25rem 0;
+  padding: 0.4rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+/* Groups the pill with the Refresh button in the conversation topbar. */
+.topbar-right { display: flex; align-items: center; gap: 0.5rem; }
+
+/* Unobtrusive "Reconnecting…" / "Offline" pill; shown only when sync is unhealthy.
+   Accent-tinted by default (actively recovering); dimmed for the offline state. */
+.sync-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--panel-2);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sync-pill.offline { border-color: var(--border); color: var(--muted); }

@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use matrix_sdk::{authentication::matrix::MatrixSession, ruma::OwnedUserId, store::RoomLoadSettings, Client};
 use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
+use matrix_sdk_ui::timeline::Timeline;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 use tokio::sync::RwLock;
@@ -43,6 +44,25 @@ pub struct MatrixState {
     /// the previous observer retires itself instead of two observers fighting to
     /// restart different (one of them dead) services. See `spawn_sync_observer`.
     sync_generation: Arc<AtomicU64>,
+
+    /// The Timeline for the ONE room the user currently has open, if any.
+    ///
+    /// WHY SINGLE-OPEN-ROOM (not a map): the UI only ever shows one conversation
+    /// at a time — opening a chat replaces whatever was open, and hitting "← Inbox"
+    /// closes it. Modelling that as a single slot (not a `HashMap<room_id, …>`)
+    /// keeps the lifecycle trivial: opening a new room drops the previous Timeline
+    /// (which stops its SDK background tasks) and its diff-forwarding task retires
+    /// itself via the generation guard below. No bookkeeping of stale entries, no
+    /// risk of leaking timelines for rooms the user has long since navigated away
+    /// from. If we ever add split-view / multiple open panes, this becomes a map.
+    open_timeline: RwLock<Option<Arc<Timeline>>>,
+    /// Monotonic id of the *current* open Timeline, mirroring `sync_generation`.
+    /// `open_room_timeline` bumps this and hands the fresh value to the diff task
+    /// it spawns; that task exits the instant the counter moves past its value
+    /// (because a different room was opened, the room was closed, or we logged
+    /// out). Without it, switching rooms fast could leave an old task still
+    /// emitting the previous room's items over the shared "timeline-items" event.
+    timeline_generation: Arc<AtomicU64>,
 }
 
 /// On-disk session for "stay logged in". The homeserver is saved alongside the
@@ -899,7 +919,9 @@ pub struct ChatLine {
     /// opening a photo-heavy chat doesn't block on downloading every image at once.
     pub image: Option<String>,
     /// The Matrix event id — the handle for reactions / reply / edit / delete.
-    /// None only for optimistic echoes that haven't hit the server yet.
+    /// None only for local echoes that haven't been accepted by the server yet
+    /// (the SDK fills it in once the send succeeds, and the next timeline diff
+    /// re-emits this line with the real id).
     pub event_id: Option<String>,
     /// True when this message has been edited (an m.replace landed on it);
     /// `body` already contains the LATEST text.
@@ -907,6 +929,16 @@ pub struct ChatLine {
     /// Reaction emoji on this message, one entry per reaction (duplicates mean
     /// multiple people used the same emoji — the UI groups and counts them).
     pub reactions: Vec<String>,
+    /// True while this is a *local echo* — a message we sent that the SDK has
+    /// added to the timeline optimistically but the server has not yet confirmed
+    /// (send-state NotSentYet). The UI dims it to signal "sending…". Cleared to
+    /// false once the send is confirmed (send-state Sent) and the line re-emits
+    /// with its real `event_id`. `false` for everything that came from the server.
+    pub pending: bool,
+    /// True when this local echo *failed* to send (send-state SendingFailed) —
+    /// the SDK keeps it in the timeline so the UI can show a failed marker rather
+    /// than silently dropping the user's message. `false` otherwise.
+    pub failed: bool,
 }
 
 /// Fetch the most recent `limit` text messages from a room, oldest-first - the
@@ -1041,6 +1073,10 @@ pub async fn room_messages(
             edited,
             reactions: reactions.remove(&event_id).unwrap_or_default(),
             event_id: Some(event_id.to_string()),
+            // `room_messages` only ever returns server history (a /messages
+            // backward-paginate), so none of its lines are un-sent local echoes.
+            pending: false,
+            failed: false,
         });
     }
     // `backward` gave newest-first; the UI wants oldest-first.
@@ -1345,5 +1381,337 @@ pub async fn subscribe_room(
     svc.room_list_service()
         .subscribe_to_rooms(&[rid.as_ref()])
         .await;
+    Ok(())
+}
+
+// ===========================================================================
+// Live open-room timeline (Session B, risks #2/#4/#6)
+//
+// WHY A TIMELINE INSTEAD OF `room_messages`
+// `room_messages` does a fresh server `/messages` backward-paginate on EVERY
+// call. The open conversation used to fire that on open, on a "rooms-updated"
+// ping, on a blind 3-second timer, and after every send — brute-forcing
+// liveness at the cost of a network round-trip each time, with the sent bubble
+// only reconciled by luck of the next refetch.
+//
+// `matrix_sdk_ui::timeline::Timeline` replaces all of that. It gives us:
+//   • an ordered, deduplicated list of the room's messages, kept live by the
+//     SDK (edits/reactions/redactions fold into the items they target),
+//   • *local echo*: a message we send appears in the items immediately with a
+//     send-state, then flips to confirmed with its real event id — no manual
+//     optimistic bubble, no transaction-id reconciliation on our side (risk #4),
+//   • reads straight from the persistent SDK event cache (risk #6 — see the
+//     EventCache note below), so reopening a room paints from disk with no
+//     network wait.
+//
+// We subscribe to the Timeline's diff stream, but because the frontend keeps
+// its simple "replace the whole array" model, we don't translate diffs into a
+// TS-side protocol: on each (coalesced) diff batch we just re-read the current
+// item list, map it to `ChatLine`s, and emit the full list over the
+// "timeline-items" Tauri event. Full-list emission costs no network (the items
+// are already in memory) and keeps the frontend trivial.
+//
+// EVENT CACHE (risk #6): nothing to enable here. In matrix-sdk 0.18 the
+// persistent event cache is ALREADY active on our existing setup: `.sqlite_store()`
+// wires a `SqliteEventCacheStore` into the client, and `SyncService` (via
+// `RoomListService::new`) eagerly calls `client.event_cache().subscribe()`. The
+// room event cache loads its linked chunks from that SQLite store on init and
+// writes updates back to it — so a reopened room renders from disk instantly.
+// The Timeline is the read API over that cache; using it is what turns the
+// already-persisted cache into a visible cold-start win. No builder flag, no
+// experimental feature. See docs/SYNC-HARDENING.md row 6.
+// ===========================================================================
+
+/// Map ONE timeline item to a `ChatLine`, or `None` if it isn't a renderable
+/// message.
+///
+/// WHAT WE SKIP (returning None), and why it's safe:
+///   • Virtual items — day dividers, the read marker, the timeline-start marker.
+///     The existing UI computes day separators and sender grouping itself from
+///     the `ChatLine` stream, so re-emitting the SDK's virtual items would just
+///     duplicate that. Filtering them out is the minimal change (mirrors how
+///     `room_messages` never produced them).
+///   • Non-message events — membership/profile/state changes, call events,
+///     stickers, polls, redacted/undecryptable placeholders. `ChatLine` only
+///     models text/notice/emote/image, exactly what `room_messages` filtered to;
+///     mirroring that filtering here keeps rendering identical.
+///
+/// SEND STATE → `pending` / `failed`: a local echo carries a send-state instead
+/// of a server event id. `NotSentYet` ⇒ pending (UI dims it), `SendingFailed`
+/// ⇒ failed, `Sent`/remote ⇒ neither. The event id is None until the server
+/// confirms; the next diff re-emits the same line with the real id.
+async fn timeline_item_to_chatline(
+    room: &matrix_sdk::Room,
+    item: &matrix_sdk_ui::timeline::TimelineItem,
+    name_cache: &mut std::collections::HashMap<matrix_sdk::ruma::OwnedUserId, String>,
+) -> Option<ChatLine> {
+    use matrix_sdk::ruma::events::room::message::MessageType;
+    use matrix_sdk_ui::timeline::EventSendState;
+
+    // Virtual items (day dividers / read marker / timeline start) are not lines.
+    let event = item.as_event()?;
+
+    // Only `m.room.message`-shaped content maps to a ChatLine; everything else
+    // (state changes, stickers, polls, redactions, UTDs, calls) is skipped, the
+    // same set `room_messages` skips.
+    let message = event.content().as_message()?;
+
+    // Text-like types carry `.body`; images carry a media source we serialize
+    // into the same opaque handle `room_messages` produces, so the existing
+    // `fetch_media` / `<MessageImage>` path renders them unchanged.
+    let (body, image) = match message.msgtype() {
+        MessageType::Text(t) => (t.body.clone(), None),
+        MessageType::Notice(n) => (n.body.clone(), None),
+        MessageType::Emote(e) => (e.body.clone(), None),
+        MessageType::Image(img) => (
+            if img.body.is_empty() { "[image]".to_string() } else { img.body.clone() },
+            serde_json::to_string(&img.source).ok(),
+        ),
+        _ => return None,
+    };
+
+    // Resolve the sender's display name, cached per user across the batch.
+    let sender = event.sender().to_owned();
+    let sender_name = match name_cache.get(&sender) {
+        Some(n) => n.clone(),
+        None => {
+            let n = match room.get_member_no_sync(&sender).await {
+                Ok(Some(member)) => member
+                    .display_name()
+                    .map(|s| s.to_owned())
+                    .unwrap_or_else(|| sender.localpart().to_owned()),
+                _ => sender.localpart().to_owned(),
+            };
+            name_cache.insert(sender.clone(), n.clone());
+            n
+        }
+    };
+
+    // Reactions: the Timeline aggregates them onto the target item already, keyed
+    // emoji → (sender → info). The UI wants a flat `Vec<String>` with one entry
+    // per reaction (it groups + counts), so repeat each key once per sender.
+    let mut reactions = Vec::new();
+    if let Some(by_key) = event.content().reactions() {
+        for (key, by_sender) in by_key.iter() {
+            for _ in 0..by_sender.len() {
+                reactions.push(key.clone());
+            }
+        }
+    }
+
+    // Send-state → pending/failed (local echoes only). Remote events have None.
+    let (pending, failed) = match event.send_state() {
+        Some(EventSendState::NotSentYet { .. }) => (true, false),
+        Some(EventSendState::SendingFailed { .. }) => (false, true),
+        _ => (false, false),
+    };
+
+    Some(ChatLine {
+        sender: sender.to_string(),
+        sender_name,
+        body,
+        // Local echoes have no origin_server_ts yet; fall back to their local
+        // creation time so they sort at the bottom (newest) like the user expects.
+        ts: event
+            .timestamp()
+            .to_system_time()
+            .and_then(|st| st.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as f64)
+            .unwrap_or_else(|| {
+                event
+                    .local_created_at()
+                    .map(|t| u64::from(t.0) as f64)
+                    .unwrap_or(0.0)
+            }),
+        image,
+        event_id: event.event_id().map(|e| e.to_string()),
+        edited: message.is_edited(),
+        reactions,
+        pending,
+        failed,
+    })
+}
+
+/// Map the WHOLE current timeline item list to `ChatLine`s (skipping virtual /
+/// non-message items). Called for the initial snapshot and after each diff batch.
+async fn map_timeline_items(
+    room: &matrix_sdk::Room,
+    items: &imbl::Vector<Arc<matrix_sdk_ui::timeline::TimelineItem>>,
+) -> Vec<ChatLine> {
+    let mut name_cache = std::collections::HashMap::new();
+    let mut lines = Vec::with_capacity(items.len());
+    for item in items.iter() {
+        if let Some(line) = timeline_item_to_chatline(room, item, &mut name_cache).await {
+            lines.push(line);
+        }
+    }
+    lines
+}
+
+/// Open a live Timeline for `room_id` and stream its mapped items to the UI.
+///
+/// Emits an initial "timeline-items" event with the current (cache-backed) item
+/// list, then spawns a task that re-emits the full mapped list on every diff
+/// batch — coalescing bursts so a flurry of edits/reactions doesn't spam the
+/// webview. Opening a room replaces any previously-open one: the old Timeline is
+/// dropped (stopping its SDK tasks) and its diff task retires via the generation
+/// guard (see `timeline_generation`).
+#[tauri::command]
+pub async fn open_room_timeline(
+    state: tauri::State<'_, MatrixState>,
+    app: tauri::AppHandle,
+    room_id: String,
+) -> Result<(), String> {
+    use matrix_sdk::ruma::RoomId;
+    use matrix_sdk_ui::timeline::RoomExt;
+
+    let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
+
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("not logged in")?;
+    let room = client.get_room(&rid).ok_or("room not found")?;
+    drop(guard);
+
+    // Build the Timeline for this room (reads from the persistent event cache).
+    let timeline = Arc::new(room.timeline().await.map_err(|e| e.to_string())?);
+
+    // Claim a new timeline generation and store this as THE open timeline. Bumping
+    // the counter first retires any previous room's diff task before we replace
+    // the slot; storing the Arc keeps the Timeline (and its SDK tasks) alive.
+    let my_gen = state.timeline_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    *state.open_timeline.write().await = Some(timeline.clone());
+
+    // Initial snapshot + the diff stream. `subscribe()` returns the current items
+    // and a stream of batched diffs (Vec<VectorDiff<_>> per SDK update).
+    let (initial_items, mut diff_stream) = timeline.subscribe().await;
+
+    // Emit the initial list right away so the conversation paints from cache.
+    let room_for_map = room.clone();
+    let lines = map_timeline_items(&room_for_map, &initial_items).await;
+    let _ = app.emit(
+        "timeline-items",
+        serde_json::json!({ "room_id": room_id.clone(), "lines": lines }),
+    );
+
+    // Diff-forwarding task: on each diff batch we IGNORE the diff contents and
+    // just re-read + re-map the current items, because the frontend replaces its
+    // whole array anyway (no TS-side diff protocol). We coalesce a burst for
+    // ~150ms so many rapid updates collapse into one emission.
+    let generation = state.timeline_generation.clone();
+    let timeline_for_task = timeline.clone();
+    tauri::async_runtime::spawn(async move {
+        use futures_util::StreamExt;
+        loop {
+            // A different room was opened / the room was closed / logout — retire.
+            if generation.load(Ordering::SeqCst) != my_gen {
+                break;
+            }
+            // Wait for the next diff batch (stream end ⇒ Timeline dropped ⇒ done).
+            if diff_stream.next().await.is_none() {
+                break;
+            }
+            // Coalesce: drain any further batches that land within the window so a
+            // storm of edits/reactions results in a single re-map + emit.
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_millis(150)) => break,
+                    next = diff_stream.next() => match next {
+                        Some(_) => continue,
+                        None => break,
+                    },
+                }
+            }
+            if generation.load(Ordering::SeqCst) != my_gen {
+                break;
+            }
+            // Re-read the CURRENT items (cheap, in-memory) and emit the full list.
+            let items = timeline_for_task.items().await;
+            let lines = map_timeline_items(&room_for_map, &items).await;
+            let _ = app.emit(
+                "timeline-items",
+                serde_json::json!({ "room_id": room_id.clone(), "lines": lines }),
+            );
+        }
+    });
+
+    Ok(())
+}
+
+/// Close the open room's Timeline (called when the user returns to the inbox).
+///
+/// Bumps the generation so the diff task retires, then drops the stored Timeline
+/// so the SDK stops its per-room background work. Idempotent: closing when
+/// nothing is open just no-ops.
+#[tauri::command]
+pub async fn close_room_timeline(
+    state: tauri::State<'_, MatrixState>,
+) -> Result<(), String> {
+    state.timeline_generation.fetch_add(1, Ordering::SeqCst);
+    *state.open_timeline.write().await = None;
+    Ok(())
+}
+
+/// Load older messages in the open room by paginating the Timeline backwards.
+///
+/// The Timeline's diff stream fires as the older events prepend, so the open
+/// diff task re-emits the (now longer) list — the frontend doesn't need the
+/// return value beyond knowing whether we hit the start of the room. Returns
+/// true when the start of the timeline has been reached (nothing more to load).
+#[tauri::command]
+pub async fn paginate_room_timeline(
+    state: tauri::State<'_, MatrixState>,
+    count: u16,
+) -> Result<bool, String> {
+    let guard = state.open_timeline.read().await;
+    let timeline = guard.as_ref().ok_or("no open timeline")?;
+    // `paginate_backwards` returns Ok(true) when it has reached the start of the
+    // room (the timeline is fully back-paginated), Ok(false) if more remains.
+    let reached_start = timeline
+        .paginate_backwards(count)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(reached_start)
+}
+
+/// Send a plain-text message THROUGH the open Timeline, so the SDK adds it as a
+/// local echo immediately (risk #4). The echo appears in the next "timeline-items"
+/// emission with `pending: true` and no event id; when the server confirms, the
+/// SDK flips its send-state to Sent and the following diff re-emits the line with
+/// its real event id and `pending: false`. This is what lets us delete the
+/// frontend's manual optimistic-append hack.
+///
+/// `reply_to` (an event id) makes it a rich reply to that message.
+#[tauri::command]
+pub async fn send_message_timeline(
+    state: tauri::State<'_, MatrixState>,
+    app: tauri::AppHandle,
+    reply_to: Option<String>,
+    body: String,
+) -> Result<(), String> {
+    use matrix_sdk::ruma::events::room::message::{
+        RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
+    };
+    use matrix_sdk::ruma::EventId;
+
+    // Not currently used for error mapping (see below), but kept in the signature
+    // so a future auth-mapping pass can reach the app handle without a breaking
+    // change to the command's arguments.
+    let _ = &app;
+
+    let guard = state.open_timeline.read().await;
+    let timeline = guard.as_ref().ok_or("no open timeline")?;
+
+    // A reply goes through `send_reply` (it builds the m.in_reply_to relation and
+    // the reply fallback for us) and takes a relation-less content; a plain
+    // message goes through `send` with the full `AnyMessageLikeEventContent`.
+    // Both add the local echo to the timeline, so either way the UI sees it now.
+    if let Some(target) = reply_to {
+        let eid = EventId::parse(&target).map_err(|e| e.to_string())?;
+        let content = RoomMessageEventContentWithoutRelation::text_plain(body);
+        timeline.send_reply(content, eid).await.map_err(|e| e.to_string())?;
+    } else {
+        let content = RoomMessageEventContent::text_plain(body);
+        timeline.send(content.into()).await.map_err(|e| e.to_string())?;
+    }
     Ok(())
 }

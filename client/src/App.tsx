@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
-import { login, listRooms, listAccounts, logout, roomMessages, sendMessage, sendReaction, editMessage, deleteMessage, markRead, setTyping, setPinned, setArchived, setMuted, sendMedia, searchMessages, roomAvatar, fetchMedia, joinRoom, acceptAllInvites, subscribeRoom, restoreSession } from "./api";
+import { login, listRooms, listAccounts, logout, sendMessage, sendMessageTimeline, openRoomTimeline, closeRoomTimeline, paginateRoomTimeline, sendReaction, editMessage, deleteMessage, markRead, setTyping, setPinned, setArchived, setMuted, sendMedia, searchMessages, roomAvatar, fetchMedia, joinRoom, acceptAllInvites, subscribeRoom, restoreSession } from "./api";
 import { listen } from "@tauri-apps/api/event";
 import type { RoomSummary } from "./bindings/RoomSummary";
 import type { ChatLine } from "./bindings/ChatLine";
@@ -174,6 +174,9 @@ export default function App() {
   const [openRoom, setOpenRoom] = useState<RoomSummary | null>(null);
   const [messages, setMessages] = useState<ChatLine[]>([]);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
+  // Backward-pagination state for the open room's "Load older" control.
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [reachedStart, setReachedStart] = useState(false);
   const [draft, setDraft] = useState("");
   const [query, setQuery] = useState("");
   const [restoring, setRestoring] = useState(true);
@@ -212,22 +215,37 @@ export default function App() {
   useEffect(() => {
     if (!openRoom) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setOpenRoom(null); setError(null); }
+      if (e.key === "Escape") { closeConversation(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openRoom]);
 
-  // Open-room liveness: subscribe_room + "rooms-updated" is the fast path, but
-  // it proved unreliable (probe messages never arrived), so a light 3s re-pull
-  // of the open room is the guaranteed floor. Cheap: one /messages call for one
-  // room, only while a conversation is open. Revisit in the sync-hardening pass.
+  // Open-room liveness: the backend drives an SDK Timeline for the open room and
+  // emits "timeline-items" (the full mapped message list) on every change — the
+  // initial snapshot from cache plus a fresh emission on each new message / edit /
+  // reaction / redaction / local-echo transition. This REPLACES the old blind 3s
+  // /messages poll and the "rooms-updated"-triggered refetch: no polling, no
+  // per-refresh network call, and sent messages reconcile via the SDK's own local
+  // echo. We guard on room_id so a late emission from a room we've left is ignored.
   useEffect(() => {
     if (!openRoom) return;
-    const id = setInterval(() => {
-      roomMessages(openRoom.id, 50).then(setMessages).catch(() => {});
-    }, 3000);
-    return () => clearInterval(id);
+    const roomId = openRoom.id;
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    listen<{ room_id: string; lines: ChatLine[] }>("timeline-items", (e) => {
+      if (!alive) return;
+      if (e.payload.room_id !== roomId) return;
+      setMessages(e.payload.lines);
+      setLoadingMsgs(false);
+    }).then((fn) => {
+      if (alive) unlisten = fn;
+      else fn();
+    });
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
   }, [openRoom]);
 
   // Live "X is typing…" for the open room, emitted by the Rust typing handler.
@@ -260,12 +278,12 @@ export default function App() {
     let unlisten: (() => void) | undefined;
     listen("rooms-updated", () => {
       refreshRooms();
-      // If a conversation is open, re-pull its messages too, so bot replies +
-      // incoming messages appear live there as well (not just the inbox list).
+      // The open conversation is NO LONGER refetched here — it's driven live by
+      // the "timeline-items" event (see the open-room effect). We only keep the
+      // read-receipt: when sync touches a room we're actively viewing, whatever
+      // just arrived counts as read.
       const cur = openRoomRef.current;
       if (cur) {
-        roomMessages(cur.id, 50).then(setMessages).catch(() => {});
-        // We're looking at this chat, so whatever just arrived is read.
         markRead(cur.id).catch(() => {});
       }
     }).then((fn) => {
@@ -379,6 +397,7 @@ export default function App() {
   }
 
   async function handleLogout() {
+    closeRoomTimeline().catch(() => {});
     await logout();
     setUserId(null);
     setRooms([]);
@@ -414,22 +433,46 @@ export default function App() {
       }
     }
     setOpenRoom(room);
-    // Stream this room live via sliding sync (replaces the old 2.5s poll).
+    // Stream this room live via sliding sync (so its events reach the client),
+    // then open its SDK Timeline: the backend emits "timeline-items" with the
+    // cache-backed history immediately and on every subsequent change. No polling,
+    // no /messages call here — the open-room effect's listener sets the messages.
     subscribeRoom(room.id).catch(() => {});
     setMessages([]);
     setError(null);
     setReplyTo(null);
     setEditing(null);
     setReactFor(null);
+    setReachedStart(false);
     setLoadingMsgs(true);
-    try {
-      setMessages(await roomMessages(room.id, 50));
-      // Opening a chat reads it: clears our unread badge + shows read ticks.
-      markRead(room.id).catch(() => {});
-    } catch (err) {
+    openRoomTimeline(room.id).catch((err) => {
       setError(String(err));
-    } finally {
       setLoadingMsgs(false);
+    });
+    // Opening a chat reads it: clears our unread badge + shows read ticks.
+    markRead(room.id).catch(() => {});
+  }
+
+  // Leaving the conversation: close the backend Timeline so its live diff stream
+  // retires. Centralised here so both the "← Inbox" button and Esc use it.
+  function closeConversation() {
+    closeRoomTimeline().catch(() => {});
+    setOpenRoom(null);
+    setError(null);
+  }
+
+  // "Load older" — paginate the open Timeline backwards. The older messages arrive
+  // via the next "timeline-items" emission; we only track whether we hit the start.
+  async function loadOlder() {
+    if (loadingOlder || reachedStart) return;
+    setLoadingOlder(true);
+    try {
+      const done = await paginateRoomTimeline(50);
+      setReachedStart(done);
+    } catch {
+      /* best-effort; leave the button for a retry */
+    } finally {
+      setLoadingOlder(false);
     }
   }
 
@@ -440,14 +483,13 @@ export default function App() {
     setDraft("");
     setTyping(openRoom.id, false).catch(() => {});
 
-    // Edit mode: replace the target message's text, no optimistic echo (the
-    // edited bubble updates in place on the next live refresh).
+    // Edit mode: replace the target message's text. No manual refetch — the open
+    // Timeline folds the m.replace into the target item and re-emits "timeline-items".
     if (editing?.event_id) {
       const target = editing;
       setEditing(null);
       try {
         await editMessage(openRoom.id, target.event_id!, body);
-        setMessages(await roomMessages(openRoom.id, 50));
       } catch (err) {
         setError(String(err));
         setDraft(body);
@@ -457,20 +499,15 @@ export default function App() {
 
     const inReplyTo = replyTo?.event_id ?? undefined;
     setReplyTo(null);
-    // Optimistic echo: render the message instantly instead of waiting for a
-    // full reload — sending should feel immediate. Rolled back if the send fails;
-    // the next Refresh/open reconciles against the server copy.
-    const optimistic: ChatLine = {
-      sender: userId, sender_name: "You", body, ts: Date.now(),
-      image: null, event_id: null, edited: false, reactions: [],
-    };
-    setMessages((prev) => [...prev, optimistic]);
+    // Send THROUGH the Timeline: the SDK adds the message as a local echo
+    // instantly (it arrives in the next "timeline-items" emission with
+    // pending:true and no event id), then reconciles to confirmed on its own.
+    // No manual optimistic bubble, no rollback bookkeeping — that's risk #4 gone.
     try {
-      await sendMessage(openRoom.id, body, inReplyTo);
+      await sendMessageTimeline(body, inReplyTo);
     } catch (err) {
       setError(String(err));
       setDraft(body);
-      setMessages((prev) => prev.filter((m) => m !== optimistic));
     }
   }
 
@@ -487,8 +524,9 @@ export default function App() {
     if (!openRoom || !m.event_id) return;
     setReactFor(null);
     try {
+      // No refetch: the open Timeline aggregates the reaction onto its message
+      // item and re-emits "timeline-items".
       await sendReaction(openRoom.id, m.event_id, key);
-      setMessages(await roomMessages(openRoom.id, 50));
     } catch (err) {
       setError(String(err));
     }
@@ -498,8 +536,8 @@ export default function App() {
     if (!openRoom || !m.event_id) return;
     if (!window.confirm("Delete this message?")) return;
     try {
+      // No refetch: the open Timeline reflects the redaction via a diff.
       await deleteMessage(openRoom.id, m.event_id);
-      setMessages(await roomMessages(openRoom.id, 50));
     } catch (err) {
       setError(String(err));
     }
@@ -534,8 +572,9 @@ export default function App() {
         fr.readAsDataURL(file);
       });
       const base64 = dataUrl.slice(dataUrl.indexOf(",") + 1);
+      // The send-queue upload lands as an event in the open Timeline, which
+      // re-emits "timeline-items" — no manual refetch needed.
       await sendMedia(openRoom.id, file.name, file.type || "application/octet-stream", base64);
-      setMessages(await roomMessages(openRoom.id, 50));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -607,16 +646,32 @@ export default function App() {
     return (
       <div className="app">
         <header className="topbar">
-          <button className="ghost" onClick={() => { setOpenRoom(null); setError(null); }}>← Inbox</button>
+          <button className="ghost" onClick={closeConversation}>← Inbox</button>
           <strong className="convo-title">{displayName(openRoom)}</strong>
           <span className="topbar-right">
             <SyncPill state={syncState} />
-            <button className="ghost" onClick={() => openConversation(openRoom)}>Refresh</button>
+            {/* Manual Refresh: paginate a little older (the live diff stream keeps
+                the newest messages current on its own, so there's nothing to
+                "re-pull" for recency — Refresh now means "reach further back"). */}
+            <button className="ghost" onClick={loadOlder} disabled={loadingOlder || reachedStart}>
+              {loadingOlder ? "Loading…" : "Refresh"}
+            </button>
           </span>
         </header>
         {error && <p className="error">{error}</p>}
         <div className="convo">
           {loadingMsgs && <p className="muted">Loading messages…</p>}
+          {!loadingMsgs && messages.length > 0 && (
+            <div className="load-older">
+              {reachedStart ? (
+                <span className="muted">Start of conversation</span>
+              ) : (
+                <button className="ghost" onClick={loadOlder} disabled={loadingOlder}>
+                  {loadingOlder ? "Loading…" : "Load older messages"}
+                </button>
+              )}
+            </div>
+          )}
           {!loadingMsgs && messages.length === 0 && (
             <p className="empty muted">No text messages to show.</p>
           )}
@@ -634,7 +689,7 @@ export default function App() {
                     <span>{formatDay(m.ts)}</span>
                   </div>
                 )}
-                <div className={`${own ? "msg own" : "msg"}${grouped ? " grouped" : ""}`}>
+                <div className={`${own ? "msg own" : "msg"}${grouped ? " grouped" : ""}${m.pending ? " pending" : ""}${m.failed ? " failed" : ""}`}>
                   {!own && !grouped && (
                     <span className="msg-sender">{m.sender_name}</span>
                   )}
@@ -659,7 +714,13 @@ export default function App() {
                   )}
                   <span className="msg-time">
                     {m.edited && <span className="edited">edited · </span>}
-                    {formatTime(m.ts)}
+                    {m.failed ? (
+                      <span className="send-failed">failed to send</span>
+                    ) : m.pending ? (
+                      <span className="sending">sending…</span>
+                    ) : (
+                      formatTime(m.ts)
+                    )}
                   </span>
                   {m.event_id && (
                     <span className="msg-actions">

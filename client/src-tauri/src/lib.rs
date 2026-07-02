@@ -62,6 +62,11 @@ pub fn run() {
             matrix::delete_message,
             matrix::mark_read,
             matrix::typing,
+            // Live open-room Timeline (SDK local echo + event cache).
+            matrix::open_room_timeline,
+            matrix::close_room_timeline,
+            matrix::paginate_room_timeline,
+            matrix::send_message_timeline,
             // TEMP(ai): re-enable with AI
             // ai::ai_set_provider,
             // ai::ai_active_provider,

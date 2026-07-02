@@ -213,6 +213,16 @@ button:disabled { opacity: 0.6; cursor: default; }
 .msg.own .reaction-chip { background: rgba(255, 255, 255, 0.15); border-color: transparent; }
 .edited { color: var(--muted); font-style: italic; }
 .msg.own .edited { color: rgba(255, 255, 255, 0.7); }
+
+/* Local echo (SDK send-state): dim a message that's still sending, and flag one
+   that failed to send so the user knows it didn't go through. */
+.msg.pending { opacity: 0.6; }
+.sending { font-style: italic; }
+.send-failed { color: #ef6c4d; font-weight: 600; }
+.msg.own .send-failed { color: #ffd9cf; }
+
+/* "Load older" control at the top of the conversation. */
+.load-older { display: flex; justify-content: center; margin: 0.25rem 0 0.5rem; }
 .typing-line { margin: 0 0.25rem 0.15rem; font-size: 0.78rem; color: var(--muted); font-style: italic; }
 .compose-context {
   display: flex;

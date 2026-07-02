@@ -45,12 +45,53 @@ export async function logout(): Promise<void> {
   return invoke<void>("logout");
 }
 
-/** Fetch recent text messages for a room, oldest-first. */
+/**
+ * Fetch recent text messages for a room, oldest-first, via a one-off server
+ * `/messages` fetch. Used by search-result preview / the manual Refresh — the
+ * OPEN conversation is driven live by `openRoomTimeline` instead (no polling).
+ */
 export async function roomMessages(roomId: string, limit = 50): Promise<ChatLine[]> {
   return invoke<ChatLine[]>("room_messages", { roomId, limit });
 }
 
-/** Send a plain-text message to a room. `replyTo` makes it a rich reply. */
+/**
+ * Open a live SDK Timeline for a room. The backend emits an initial
+ * "timeline-items" event with the current (cache-backed) messages, then re-emits
+ * the full list on every change — so the open conversation stays live with no
+ * polling and no per-refresh network call. Call `closeRoomTimeline` when leaving.
+ */
+export async function openRoomTimeline(roomId: string): Promise<void> {
+  return invoke<void>("open_room_timeline", { roomId });
+}
+
+/** Close the open room's Timeline (retires its live diff stream). */
+export async function closeRoomTimeline(): Promise<void> {
+  return invoke<void>("close_room_timeline");
+}
+
+/**
+ * Load older messages in the open room (Timeline backward-pagination). The new
+ * messages arrive via the next "timeline-items" emission; the returned boolean is
+ * true once the start of the room has been reached (nothing older to load).
+ */
+export async function paginateRoomTimeline(count = 50): Promise<boolean> {
+  return invoke<boolean>("paginate_room_timeline", { count });
+}
+
+/**
+ * Send a plain-text message through the OPEN Timeline, so it appears instantly as
+ * an SDK local echo (pending) and reconciles to confirmed on its own — no manual
+ * optimistic bubble. `replyTo` makes it a rich reply. Requires an open timeline.
+ */
+export async function sendMessageTimeline(body: string, replyTo?: string): Promise<void> {
+  return invoke<void>("send_message_timeline", { body, replyTo: replyTo ?? null });
+}
+
+/**
+ * Send a plain-text message to a room by id (NOT through the open timeline) —
+ * used e.g. to kick off the WhatsApp bridge QR login in a room we then open.
+ * `replyTo` makes it a rich reply.
+ */
 export async function sendMessage(roomId: string, body: string, replyTo?: string): Promise<void> {
   return invoke<void>("send_message", { roomId, body, replyTo: replyTo ?? null });
 }

@@ -28,6 +28,13 @@ matrix-sdk = { version = "0.18", features = ["e2e-encryption", "sqlite", "bundle
 # Simplified Sliding Sync engine (SyncService / RoomListService) — the "no-delay" sync.
 matrix-sdk-ui = "0.18"
 
+# The Timeline diff stream yields `imbl::Vector<Arc<TimelineItem>>` and a
+# `Stream` of `VectorDiff`s; we name both to map items → ChatLines and to drive
+# the diff-forwarding task. Pinned to the versions matrix-sdk-ui 0.18 already
+# resolves (see Cargo.lock) so we share one copy, not a second incompatible one.
+imbl = "6.1"
+futures-util = "0.3"
+
 # Generates TypeScript types from our Rust structs (keeps the boundary in sync).
 ts-rs = "12"
 

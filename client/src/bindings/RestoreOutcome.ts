@@ -9,6 +9,7 @@
  *   - a session existed but the server rejected it (revoked/expired token) →
  *     show "Session expired, please log in again",
  *   - it worked → skip login and go straight to the inbox.
+ *
  * The old `Option<String>` collapsed the first two into `None`, so the UI could
  * never show the "expired" message. `status` names the outcome; `user_id` is set
  * only for `restored`.

@@ -71,7 +71,37 @@ pub struct MatrixState {
     /// updating and sends go to the wrong room. Tokio's Mutex is FIFO, so holding
     /// this across the whole open preserves invocation order — last open wins.
     open_timeline_lock: tokio::sync::Mutex<()>,
+
+    /// Cached Space→account mapping, shared across a refresh cycle.
+    ///
+    /// WHY THIS EXISTS (risk #5): `account_map` iterates EVERY room hunting bridge
+    /// Spaces + reading their `m.space.child` children. The old code recomputed it
+    /// twice per inbox refresh (once in `list_rooms`, once in `list_accounts` via
+    /// the frontend's `Promise.all`), on every 250ms sync burst. It's local-only
+    /// (no network — just in-memory room state), so caching it and recomputing it
+    /// only inside the room-list task (which owns the refresh cadence) collapses
+    /// that to once per burst. `list_accounts` and the manual `list_rooms` both
+    /// read this cache instead of rescanning. `None` = not computed yet (cold).
+    /// Stored as (room_id→space_id, account list) — the two halves `account_map`
+    /// produces.
+    account_cache: AccountCache,
+    /// Monotonic id of the *current* room-list task, mirroring `sync_generation`.
+    /// `start_sync` bumps this and hands the value to the room-list task it spawns;
+    /// that task exits the instant the counter moves past its value (logout / a new
+    /// login replacing the service), so a stale task can't keep emitting a dead
+    /// session's inbox over the shared "room-list" event.
+    room_list_generation: Arc<AtomicU64>,
 }
+
+/// The cached Space→account mapping: (room_id → backing Space id, account list).
+/// Both halves are what `account_map` produces; see `MatrixState.account_cache`.
+type AccountMap =
+    (std::collections::HashMap<matrix_sdk::ruma::OwnedRoomId, String>, Vec<Account>);
+
+/// Shared, interior-mutable slot for the cached account map (`None` = cold, not
+/// computed yet). Shared between the room-list task (which writes it each refresh)
+/// and the `list_accounts`/`list_rooms` commands (which read it).
+type AccountCache = Arc<RwLock<Option<AccountMap>>>;
 
 /// On-disk session for "stay logged in". The homeserver is saved alongside the
 /// tokens because restore must rebuild the client against the same server.
@@ -260,9 +290,10 @@ fn spawn_sync_observer(
     });
 }
 
-/// Build + start Simplified Sliding Sync for `client`, and wire its updates to a
-/// debounced "rooms-updated" Tauri event so the UI stays live. Returns the
-/// SyncService (kept alive in state). Shared by login + restore_session.
+/// Build + start Simplified Sliding Sync for `client`, and wire its updates to the
+/// live room-list task (which emits debounced "room-list" Tauri events) so the
+/// inbox stays live. Returns the SyncService (kept alive in state). Shared by
+/// login + restore_session.
 ///
 /// `generation` is `MatrixState.sync_generation`: we bump it here so the observer
 /// this call spawns can tell whether it still owns the live service (see
@@ -271,6 +302,8 @@ async fn start_sync(
     client: &Client,
     app: tauri::AppHandle,
     generation: Arc<AtomicU64>,
+    room_list_generation: Arc<AtomicU64>,
+    account_cache: AccountCache,
 ) -> Result<Arc<SyncService>, String> {
     let sync_service = SyncService::builder(client.clone())
         // Enable the SDK's offline mode: instead of hard-terminating when the
@@ -397,19 +430,74 @@ async fn start_sync(
         }
     });
 
-    let mut updates = client.subscribe_to_all_room_updates();
+    // Sliding-sync-native inbox (risk #5): drive the room list from the SDK's own
+    // room-update signal instead of an O(rooms) `/messages` rescan per tick.
+    // `start_sync` bumps `room_list_generation` and hands its value to the task so
+    // a logout / re-login retires the previous one (see `spawn_room_list_task`).
+    let my_room_gen = room_list_generation.fetch_add(1, Ordering::SeqCst) + 1;
+    spawn_room_list_task(
+        client.clone(),
+        app.clone(),
+        room_list_generation,
+        my_room_gen,
+        account_cache,
+    );
+
+    Ok(sync_service)
+}
+
+/// Drive the inbox off the SDK's room-update stream — the sliding-sync-native
+/// replacement for the old O(rooms) `/messages`-per-room rescan (risk #5).
+///
+/// WHY THIS SHAPE (mirrors Session B's Timeline task)
+/// `client.subscribe_to_all_room_updates()` fires once per sync that touched any
+/// room — for a new message, an unread-count change, a membership change, a tag
+/// change, or a room appearing/disappearing. That's the single "something in the
+/// inbox changed" signal. On the first tick (and each coalesced burst after) we
+/// re-map the CURRENT room list *from local state only* (`map_all_rooms`) and emit
+/// the whole list over the "room-list" Tauri event; the frontend replaces its
+/// array. Previews come from the per-room event cache (the ≤1 event sliding sync
+/// delivers per room), unread/name/tags/mute from in-memory room state — NO
+/// per-room network fetch, so the cost is O(rooms) cheap in-memory reads, not
+/// O(rooms) round-trips.
+///
+/// INSTANT-first + coalesce: we emit immediately on the first update of a burst
+/// (a new message paints at once, no debounce latency), then drain further
+/// updates for 250ms and emit once more so the settled state also lands.
+///
+/// GENERATION GUARD: identical to the sync observer — `start_sync` bumps
+/// `room_list_generation` per login and passes `my_gen`; the task exits the moment
+/// it no longer owns the current generation (logout / a newer login replaced us),
+/// so a stale task can't emit a dead session's inbox.
+fn spawn_room_list_task(
+    client: Client,
+    app: tauri::AppHandle,
+    generation: Arc<AtomicU64>,
+    my_gen: u64,
+    account_cache: AccountCache,
+) {
     tauri::async_runtime::spawn(async move {
+        let mut updates = client.subscribe_to_all_room_updates();
+
+        // Emit an initial snapshot right away so the inbox paints from cache before
+        // the first sync update lands (login/restore already populated local state).
+        emit_room_list(&client, &app, &account_cache).await;
+
         loop {
+            // A logout / newer login replaced us — stop before touching a dead session.
+            if generation.load(Ordering::SeqCst) != my_gen {
+                break;
+            }
             match updates.recv().await {
                 Ok(_) => {}
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
-            // INSTANT-first: emit immediately on the first update (no built-in
-            // latency), then coalesce the burst that follows for 250ms and emit
-            // once more so the final state also lands. This is the "no delay"
-            // promise — a new message paints at once instead of after a debounce.
-            let _ = app.emit("rooms-updated", ());
+            if generation.load(Ordering::SeqCst) != my_gen {
+                break;
+            }
+            // INSTANT-first: emit at once, then coalesce the burst for 250ms.
+            emit_room_list(&client, &app, &account_cache).await;
             let mut more = false;
             loop {
                 tokio::select! {
@@ -421,13 +509,29 @@ async fn start_sync(
                     },
                 }
             }
+            if generation.load(Ordering::SeqCst) != my_gen {
+                break;
+            }
             if more {
-                let _ = app.emit("rooms-updated", ());
+                emit_room_list(&client, &app, &account_cache).await;
             }
         }
     });
+}
 
-    Ok(sync_service)
+/// Map the current room list locally and emit it (plus the account list) to the
+/// UI. `map_all_rooms` recomputes + caches the account map, so `list_accounts` can
+/// serve the same cached value without rescanning. The "accounts" event lets the
+/// frontend keep its account chips live off the same refresh, so it no longer
+/// calls `list_accounts` on every "rooms-updated" (the old double-scan, risk #5).
+async fn emit_room_list(
+    client: &Client,
+    app: &tauri::AppHandle,
+    account_cache: &RwLock<Option<AccountMap>>,
+) {
+    let (rooms, accounts) = map_all_rooms(client, account_cache).await;
+    let _ = app.emit("room-list", &rooms);
+    let _ = app.emit("accounts", &accounts);
 }
 
 /// A minimal, serializable view of a room for the UI.
@@ -480,7 +584,7 @@ pub struct SearchHit {
 
 /// One connected account (a WhatsApp login). mautrix models each login as a
 /// Matrix Space whose children are that account's chats, so an account IS a Space.
-#[derive(Serialize, Deserialize, TS)]
+#[derive(Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct Account {
     /// The backing Space room id: the stable key used to filter the inbox.
@@ -554,8 +658,15 @@ pub async fn login(
         }
     }
 
-    // Sliding sync + live "rooms-updated" events (shared with restore_session).
-    let svc = start_sync(&client, app.clone(), state.sync_generation.clone()).await?;
+    // Sliding sync + live "room-list" events (shared with restore_session).
+    let svc = start_sync(
+        &client,
+        app.clone(),
+        state.sync_generation.clone(),
+        state.room_list_generation.clone(),
+        state.account_cache.clone(),
+    )
+    .await?;
     *state.sync_service.write().await = Some(svc);
 
     *state.client.write().await = Some(client);
@@ -608,31 +719,175 @@ pub async fn restore_session(
 
     let user_id: OwnedUserId = client.user_id().ok_or("no user id after restore")?.to_owned();
 
-    let svc = start_sync(&client, app.clone(), state.sync_generation.clone()).await?;
+    let svc = start_sync(
+        &client,
+        app.clone(),
+        state.sync_generation.clone(),
+        state.room_list_generation.clone(),
+        state.account_cache.clone(),
+    )
+    .await?;
     *state.sync_service.write().await = Some(svc);
     *state.client.write().await = Some(client);
     Ok(RestoreOutcome { status: "restored".into(), user_id: Some(user_id.to_string()) })
 }
 
-/// Return the current room list for the UI.
+/// Return the current room list for the UI — initial paint + manual Refresh.
+///
+/// The LIVE inbox no longer flows through here: after login the room-list task
+/// pushes the whole list over the "room-list" Tauri event on every sync burst
+/// (see `spawn_room_list_task`). This command shares the exact same local-only
+/// mapping code (`map_all_rooms`), so a manual Refresh and a live update produce
+/// identical rows — and, crucially, neither does a per-room `/messages` fetch.
 #[tauri::command]
 pub async fn list_rooms(
     state: tauri::State<'_, MatrixState>,
 ) -> Result<Vec<RoomSummary>, String> {
-    use matrix_sdk::RoomState;
-
-    use matrix_sdk::notification_settings::RoomNotificationMode;
-    use matrix_sdk::ruma::events::tag::TagName;
-
     let guard = state.client.read().await;
     let client = guard.as_ref().ok_or("not logged in")?;
+    let (rooms, _accounts) = map_all_rooms(client, &state.account_cache).await;
+    Ok(rooms)
+}
 
-    // Which account (bridge Space) each room belongs to, for the per-account filter.
-    let (room_to_account, _accounts) = account_map(client).await;
+/// Best-effort last-message preview for a room, read PURELY from local state —
+/// no network. This is the sliding-sync-native replacement for the old
+/// `latest_message` `/messages` fetch (risk #5).
+///
+/// WHERE THE PREVIEW COMES FROM: sliding sync delivers `timeline_limit = 1` event
+/// per room in its `all_rooms` list, and the SDK stores those in the per-room
+/// event cache (persisted to SQLite, so it survives restarts). `room.event_cache()`
+/// hands us that in-memory view; `events()` returns the cached events oldest→newest
+/// with zero round-trips. We walk them newest-first for the first text-like
+/// message — matching what the old `/messages` walk produced, minus the network.
+///
+/// GRACEFUL DEGRADATION: a room that has never synced an event (e.g. a brand-new
+/// invite the bridge just created) has an empty cache → we return `None` and the
+/// row shows no preview, rather than firing a per-room fetch. The preview fills in
+/// on its own the next sync tick, once the event cache receives the room's event.
+async fn latest_message_local(room: &matrix_sdk::Room) -> Option<(String, f64)> {
+    use matrix_sdk::ruma::events::{
+        room::message::MessageType, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
+    };
 
-    // Build each room's summary CONCURRENTLY. The per-room work (display name,
-    // last-message fetch, tags) used to run sequentially — with ~70 rooms that
-    // meant ~70 serial round trips per refresh. Parallel makes it feel instant.
+    // `event_cache()` is in-memory (backed by SQLite); no server request. If the
+    // global event cache isn't up yet, or the room has no cached events, degrade.
+    let (cache, _drop_handles) = room.event_cache().await.ok()?;
+    let events = cache.events().await.ok()?;
+
+    // Newest-first: the last cached event is the most recent, so the first text-ish
+    // one we hit walking backwards is the room's latest-message preview.
+    for ev in events.iter().rev() {
+        let Ok(AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(msg))) =
+            ev.raw().deserialize()
+        else {
+            continue;
+        };
+        let Some(original) = msg.as_original() else { continue };
+        // Text-like types (text/notice/emote) plus labeled attachments — so a
+        // photo/voice message still shows *something* as the preview instead of a
+        // blank row, matching how the conversation view labels them.
+        let body = match &original.content.msgtype {
+            MessageType::Text(t) => t.body.clone(),
+            MessageType::Notice(n) => n.body.clone(),
+            MessageType::Emote(e) => e.body.clone(),
+            MessageType::Image(_) => "[image]".to_string(),
+            MessageType::Video(_) => "[video]".to_string(),
+            MessageType::Audio(_) => "[voice message]".to_string(),
+            MessageType::File(_) => "[file]".to_string(),
+            _ => continue,
+        };
+        // Prefer the event's real timestamp; fall back to origin_server_ts.
+        let ts = ev
+            .timestamp()
+            .map(|t| u64::from(t.0) as f64)
+            .unwrap_or_else(|| u64::from(original.origin_server_ts.0) as f64);
+        return Some((body, ts));
+    }
+    None
+}
+
+/// Map ONE room to its `RoomSummary`, reading only local state (no network).
+///
+/// `settings` (the shared push ruleset) is passed in so mute status is a cheap
+/// local read per room instead of re-fetching the ruleset each time. `account` is
+/// looked up from the already-computed account map by the caller.
+async fn local_room_summary(
+    room: &matrix_sdk::Room,
+    account: Option<String>,
+    settings: &matrix_sdk::notification_settings::NotificationSettings,
+) -> RoomSummary {
+    use matrix_sdk::notification_settings::RoomNotificationMode;
+    use matrix_sdk::ruma::events::tag::TagName;
+    use matrix_sdk::RoomState;
+
+    // Prefer the SDK's computed display name (covers DMs / bridged rooms that
+    // carry no m.room.name), falling back to the raw name. `display_name()` is
+    // served from cached room state — no network for an already-synced room.
+    let name = match room.display_name().await {
+        Ok(dn) => Some(dn.to_string()),
+        Err(_) => room.name(),
+    };
+    let (last_message, last_ts) = match latest_message_local(room).await {
+        Some((body, ts)) => (Some(body), Some(ts)),
+        None => (None, None),
+    };
+    let membership = match room.state() {
+        RoomState::Joined => "joined",
+        RoomState::Invited => "invited",
+        RoomState::Left => "left",
+        RoomState::Knocked => "knocked",
+        RoomState::Banned => "banned",
+    }
+    .to_string();
+    let (mut pinned, mut archived) = (false, false);
+    if let Ok(Some(tags)) = room.tags().await {
+        pinned = tags.contains_key(&TagName::Favorite);
+        archived = tags.contains_key(&TagName::LowPriority);
+    }
+    let muted = settings
+        .get_user_defined_room_notification_mode(room.room_id())
+        .await
+        == Some(RoomNotificationMode::Mute);
+
+    RoomSummary {
+        id: room.room_id().to_string(),
+        name,
+        unread: room.unread_notification_counts().notification_count,
+        is_bridged: false,
+        membership,
+        last_message,
+        last_ts,
+        account,
+        pinned,
+        archived,
+        muted,
+    }
+}
+
+/// Map the WHOLE current room list to `RoomSummary`s from local state, and return
+/// the account list alongside — the single mapping path shared by the live
+/// room-list task and the `list_rooms` command.
+///
+/// Recomputes the Space→account map ONCE here and stores it in `account_cache`, so
+/// `list_accounts` can serve the same value without a second full-room rescan (the
+/// old double-scan, risk #5). `account_map` is local-only, so this whole function
+/// does zero network round-trips — it's O(rooms) cheap in-memory reads.
+async fn map_all_rooms(
+    client: &Client,
+    account_cache: &RwLock<Option<AccountMap>>,
+) -> (Vec<RoomSummary>, Vec<Account>) {
+    // Recompute the account map for this refresh cycle and cache it (see the field
+    // doc). Freshly computing it here — rather than reusing a possibly-stale cache
+    // — keeps account chips correct as Spaces/children change during active sync.
+    let (room_to_account, accounts) = account_map(client).await;
+    *account_cache.write().await = Some((room_to_account.clone(), accounts.clone()));
+
+    // One shared push ruleset object for every room's mute read (cheap local reads).
+    let settings = client.notification_settings().await;
+
+    // Map each room CONCURRENTLY. All reads are local now (event cache + cached
+    // room state), so this is bounded by CPU, not the network — no O(rooms)
+    // round-trips like the old `/messages`-per-room path.
     let mut set = tokio::task::JoinSet::new();
     for room in client.rooms() {
         // Spaces are containers (account groupings, WhatsApp communities), not
@@ -641,44 +896,8 @@ pub async fn list_rooms(
             continue;
         }
         let account = room_to_account.get(room.room_id()).cloned();
-        set.spawn(async move {
-            // Prefer the SDK's computed display name (covers DMs / bridged rooms
-            // that carry no m.room.name), falling back to the raw name.
-            let name = match room.display_name().await {
-                Ok(dn) => Some(dn.to_string()),
-                Err(_) => room.name(),
-            };
-            let (last_message, last_ts) = match latest_message(&room).await {
-                Some((body, ts)) => (Some(body), Some(ts)),
-                None => (None, None),
-            };
-            let membership = match room.state() {
-                RoomState::Joined => "joined",
-                RoomState::Invited => "invited",
-                RoomState::Left => "left",
-                RoomState::Knocked => "knocked",
-                RoomState::Banned => "banned",
-            }
-            .to_string();
-            let (mut pinned, mut archived) = (false, false);
-            if let Ok(Some(tags)) = room.tags().await {
-                pinned = tags.contains_key(&TagName::Favorite);
-                archived = tags.contains_key(&TagName::LowPriority);
-            }
-            RoomSummary {
-                id: room.room_id().to_string(),
-                name,
-                unread: room.unread_notification_counts().notification_count,
-                is_bridged: false,
-                membership,
-                last_message,
-                last_ts,
-                account,
-                pinned,
-                archived,
-                muted: false, // filled below (needs the shared push ruleset)
-            }
-        });
+        let settings = settings.clone();
+        set.spawn(async move { local_room_summary(&room, account, &settings).await });
     }
 
     let mut rooms = Vec::new();
@@ -688,16 +907,7 @@ pub async fn list_rooms(
         }
     }
 
-    // Mute flags from the push ruleset: one shared object, cheap local reads.
-    let settings = client.notification_settings().await;
-    for r in rooms.iter_mut() {
-        if let Ok(rid) = matrix_sdk::ruma::RoomId::parse(&r.id) {
-            r.muted = settings.get_user_defined_room_notification_mode(&rid).await
-                == Some(RoomNotificationMode::Mute);
-        }
-    }
-
-    Ok(rooms)
+    (rooms, accounts)
 }
 
 /// Pin/unpin a chat (the m.favourite tag — pinned chats sort first).
@@ -858,9 +1068,7 @@ pub async fn search_messages(
 /// `m.space.child` state events point at that account's chats. So we scan every
 /// Space, read its children, and remember which Space (account) each chat is in.
 /// A Space with no children is ignored (not a real account portal container).
-async fn account_map(
-    client: &Client,
-) -> (std::collections::HashMap<matrix_sdk::ruma::OwnedRoomId, String>, Vec<Account>) {
+async fn account_map(client: &Client) -> AccountMap {
     use matrix_sdk::deserialized_responses::SyncOrStrippedState;
     use matrix_sdk::ruma::events::{space::child::SpaceChildEventContent, SyncStateEvent};
 
@@ -910,49 +1118,26 @@ async fn account_map(
 }
 
 /// The connected accounts (WhatsApp logins), for the inbox's per-account filter.
+///
+/// Serves the CACHED account list computed by the last room-list refresh
+/// (`map_all_rooms` stores it), so a manual/initial `list_accounts` doesn't
+/// trigger a second full-room Space rescan on top of `list_rooms` — the old
+/// double-scan this task set out to kill (risk #5). The live inbox no longer calls
+/// this at all: the room-list task emits an "accounts" event alongside "room-list".
+/// Falls back to computing once if the cache is still cold (called before the first
+/// refresh), so the very first paint is never empty.
 #[tauri::command]
 pub async fn list_accounts(
     state: tauri::State<'_, MatrixState>,
 ) -> Result<Vec<Account>, String> {
+    if let Some((_map, accounts)) = state.account_cache.read().await.as_ref() {
+        return Ok(accounts.clone());
+    }
     let guard = state.client.read().await;
     let client = guard.as_ref().ok_or("not logged in")?;
-    let (_map, accounts) = account_map(client).await;
+    let (map, accounts) = account_map(client).await;
+    *state.account_cache.write().await = Some((map, accounts.clone()));
     Ok(accounts)
-}
-
-/// Best-effort preview: the most recent text message in a room, if any.
-/// NOTE: this does a per-room history fetch, so it is O(rooms) network calls —
-/// fine for a local server, but Simplified Sliding Sync is the real fix.
-async fn latest_message(room: &matrix_sdk::Room) -> Option<(String, f64)> {
-    use matrix_sdk::room::MessagesOptions;
-    use matrix_sdk::ruma::events::{
-        room::message::MessageType, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
-    };
-    let mut opts = MessagesOptions::backward();
-    opts.limit = 10u32.into();
-    let chunk = room.messages(opts).await.ok()?.chunk;
-    // `backward` yields newest-first, so the first text we hit is the latest.
-    for ev in chunk {
-        if let Ok(AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(msg))) =
-            ev.raw().deserialize()
-        {
-            if let Some(original) = msg.as_original() {
-                // Text-like types (text/notice/emote) — so bot/bridge notices
-                // also surface as the room's last-message preview.
-                let body = match &original.content.msgtype {
-                    MessageType::Text(t) => Some(t.body.clone()),
-                    MessageType::Notice(n) => Some(n.body.clone()),
-                    MessageType::Emote(e) => Some(e.body.clone()),
-                    _ => None,
-                };
-                if let Some(body) = body {
-                    let ts = u64::from(original.origin_server_ts.0) as f64;
-                    return Some((body, ts));
-                }
-            }
-        }
-    }
-    None
 }
 
 /// Log out and drop the client.
@@ -969,6 +1154,12 @@ pub async fn logout(
     // Arc to the service (which keeps its state stream open), so without this it
     // would keep observing — and could try to restart — a service we've stopped.
     state.sync_generation.fetch_add(1, Ordering::SeqCst);
+    // Same for the room-list task: retire it so it stops emitting the (now dead)
+    // session's inbox over "room-list" once the client below is torn down.
+    state.room_list_generation.fetch_add(1, Ordering::SeqCst);
+    // Drop the cached account map so a subsequent login can't briefly serve the
+    // previous session's accounts before its first refresh recomputes them.
+    *state.account_cache.write().await = None;
     // Same for the open room's Timeline: retire its diff task and drop the handle,
     // otherwise it lingers against the torn-down client and can emit stale
     // "timeline-items" while the user is back on the login screen.
@@ -1464,7 +1655,8 @@ pub async fn accept_all_invites(
 /// Subscribe the open room to sliding sync so its new events stream live. Sliding
 /// sync only pushes rooms in the inbox window by default; this tells it to also
 /// stream the room you're viewing, so replies (and the refreshing WhatsApp QR)
-/// arrive through the normal "rooms-updated" path with no polling timer.
+/// arrive through the normal sync-update path (the open room's Timeline diff
+/// stream + the inbox's "room-list" refresh) with no polling timer.
 #[tauri::command]
 pub async fn subscribe_room(
     state: tauri::State<'_, MatrixState>,

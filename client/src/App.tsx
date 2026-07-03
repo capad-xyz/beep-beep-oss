@@ -70,9 +70,42 @@ function relTime(ms: number): string {
   return new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+// A Map with a hard size cap and least-recently-used eviction (risk #7). The
+// avatar/media caches held resolved data: URLs (base64 blobs) keyed by room id /
+// media handle and grew UNBOUNDED for the app's lifetime — a slow leak that
+// scales with how many rooms/images you scroll past. This caps them: every read
+// or write marks the key most-recently-used (delete + re-set moves it to the end
+// of Map's insertion order), and once we exceed `max` we drop the oldest key (the
+// first in iteration order). ~200 entries is plenty for the visible inbox +
+// recently-opened chats while bounding memory. `get`/`set`/`has`/`delete` keep the
+// same surface the call sites already use, so nothing else changes.
+class LruMap<K, V> {
+  private m = new Map<K, V>();
+  constructor(private max: number) {}
+  get(k: K): V | undefined {
+    const v = this.m.get(k);
+    if (v !== undefined && this.m.delete(k)) this.m.set(k, v); // touch → most-recent
+    return v;
+  }
+  has(k: K): boolean {
+    return this.m.has(k);
+  }
+  set(k: K, v: V): void {
+    if (this.m.has(k)) this.m.delete(k); // reinsert so it counts as most-recent
+    this.m.set(k, v);
+    if (this.m.size > this.max) {
+      const oldest = this.m.keys().next().value; // first inserted = least-recent
+      if (oldest !== undefined) this.m.delete(oldest);
+    }
+  }
+  delete(k: K): boolean {
+    return this.m.delete(k);
+  }
+}
+
 // Session-lifetime cache of resolved avatar data: URLs, keyed by room id.
 // `null` = fetched but the room has no avatar (don't refetch); `undefined` = not fetched yet.
-const avatarCache = new Map<string, string | null>();
+const avatarCache = new LruMap<string, string | null>(200);
 const avatarInflight = new Map<string, Promise<string | null>>();
 
 // Inbox avatar: shows initials immediately, then swaps to the room's real
@@ -126,7 +159,8 @@ function RoomAvatar({ id, label }: { id: string; label: string }) {
 }
 
 // Session cache of resolved message-image data: URLs, keyed by the media handle.
-const mediaCache = new Map<string, string>();
+// LRU-capped (risk #7) — image blobs are the heavier of the two caches.
+const mediaCache = new LruMap<string, string>(200);
 
 // Lazily fetches and renders an image message (e.g. the WhatsApp bridge QR code),
 // so opening a chat doesn't block on downloading every picture up front.
@@ -270,38 +304,46 @@ export default function App() {
     };
   }, [openRoom]);
 
-  // LIVE INBOX: the backend emits "rooms-updated" after each sync touches a room;
-  // re-pull the list so the inbox updates itself — no manual Refresh.
+  // LIVE INBOX (sliding-sync-native): the backend's room-list task pushes the
+  // WHOLE mapped list over "room-list" on every sync burst, and the matching
+  // account list over "accounts" — computed entirely from local SDK state, with
+  // NO per-room `/messages` fetch (previews come from the event cache). We just
+  // replace our arrays. This is the replace-array model, mirroring how the open
+  // room's "timeline-items" works. No manual Refresh, no O(rooms) rescan, and no
+  // second `list_accounts` scan (the old `Promise.all([listRooms, listAccounts])`
+  // per tick is gone — see refreshRooms, now used only for initial paint/Refresh).
   useEffect(() => {
     if (!userId) return;
     let alive = true;
-    let unlisten: (() => void) | undefined;
-    listen("rooms-updated", () => {
-      refreshRooms();
-      // The open conversation is NO LONGER refetched here — it's driven live by
-      // the "timeline-items" event (see the open-room effect). We only keep the
-      // read-receipt: when sync touches a room we're actively viewing, whatever
-      // just arrived counts as read.
-      const cur = openRoomRef.current;
-      if (cur) {
-        markRead(cur.id).catch(() => {});
-      }
-    }).then((fn) => {
-      if (alive) unlisten = fn;
-      else fn();
-    });
-    // Initial-sync catch-up: the first sync's "rooms-updated" can fire before the
-    // listener above attaches, so re-pull a few times over the first seconds
-    // after login. Combined with the live listener → no manual Refresh.
-    const timers = [1200, 3000, 6000].map((ms) =>
-      setTimeout(() => {
-        if (alive) refreshRooms();
-      }, ms)
+    const unlisteners: (() => void)[] = [];
+    const track = (p: Promise<() => void>) =>
+      p.then((fn) => {
+        if (alive) unlisteners.push(fn);
+        else fn();
+      });
+
+    track(
+      listen<RoomSummary[]>("room-list", (e) => {
+        setRooms(e.payload);
+        // The open conversation is NOT refetched here — it's driven live by the
+        // "timeline-items" event (see the open-room effect). We only keep the
+        // read-receipt: when sync touches a room we're actively viewing, whatever
+        // just arrived counts as read.
+        const cur = openRoomRef.current;
+        if (cur) {
+          markRead(cur.id).catch(() => {});
+        }
+      })
     );
+    track(
+      listen<Account[]>("accounts", (e) => {
+        setAccounts(e.payload);
+      })
+    );
+
     return () => {
       alive = false;
-      unlisten?.();
-      timers.forEach(clearTimeout);
+      unlisteners.forEach((fn) => fn());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);

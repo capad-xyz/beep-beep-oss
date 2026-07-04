@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ChatLine } from "@/bindings/ChatLine";
-import { formatTime, groupReactions } from "@/lib/format";
+import { formatTime } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { MessageImage } from "@/components/conversation/MessageImage";
 
@@ -72,27 +72,49 @@ export function MessageBubble({
           (m.failed ? " ring-1 ring-danger/40" : "")
         }
       >
-        {m.image ? (
-          <span className="flex flex-col gap-1">
-            <MessageImage source={m.image} alt={m.body} />
-            {m.body && m.body !== "[image]" && <span>{m.body}</span>}
-          </span>
-        ) : (
-          <span className="whitespace-pre-wrap break-words">{m.body}</span>
-        )}
+        <span className="flex min-w-0 flex-col gap-1">
+          {m.reply_to && (
+            <span className="block rounded-sm border-l-[3px] border-oxblood bg-ink/5 px-2.5 py-1.5">
+              <span className="block text-[12px] font-semibold leading-tight text-oxblood-ink">
+                {m.reply_to.sender_name || "Replied message"}
+              </span>
+              <span className="block max-w-[280px] truncate text-[13px] text-mut">
+                {m.reply_to.body}
+              </span>
+            </span>
+          )}
+          {m.image ? (
+            <span className="flex flex-col gap-1">
+              <MessageImage source={m.image} alt={m.body} />
+              {m.body && m.body !== "[image]" && <span>{m.body}</span>}
+            </span>
+          ) : (
+            <span className="whitespace-pre-wrap break-words">{m.body}</span>
+          )}
+        </span>
         {meta}
       </div>
 
       {m.reactions.length > 0 && (
         <span className={"z-[1] -mt-2 flex gap-1 " + (own ? "mr-2" : "ml-2")}>
-          {groupReactions(m.reactions).map(([k, n]) => (
-            <span
-              key={k}
-              className="flex items-center gap-1 rounded-full border border-border bg-elevated px-2 py-px shadow-sh1"
+          {m.reactions.map((g) => (
+            <button
+              key={g.key}
+              type="button"
+              title={g.senders.join(", ")}
+              onClick={() => onReact(m, g.key)}
+              className={
+                "flex items-center gap-1 rounded-full border px-2 py-px shadow-sh1 transition-colors " +
+                (g.reacted_by_me
+                  ? "border-oxblood bg-oxblood-tint"
+                  : "border-border bg-elevated hover:border-border-strong")
+              }
             >
-              <span className="text-[12px]">{k}</span>
-              {n > 1 && <span className="font-mono text-[10px] text-mut">{n}</span>}
-            </span>
+              <span className="text-[12px]">{g.key}</span>
+              {g.senders.length > 1 && (
+                <span className="font-mono text-[10px] text-mut">{g.senders.length}</span>
+              )}
+            </button>
           ))}
         </span>
       )}

@@ -4,7 +4,7 @@ import type { RoomSummary } from "@/bindings/RoomSummary";
 import type { ChatLine } from "@/bindings/ChatLine";
 import {
   openRoomTimeline, closeRoomTimeline, paginateRoomTimeline,
-  sendMessageTimeline, sendReaction, editMessage, deleteMessage,
+  sendMessageTimeline, toggleReaction, editMessage, deleteMessage,
   markRead, setTyping, sendMedia, joinRoom, subscribeRoom,
 } from "@/api";
 
@@ -197,7 +197,7 @@ export function useTimeline(userId: string | null, onRoomJoined?: () => void) {
     if (!room || !m.event_id) return;
     try {
       // No refetch: the Timeline aggregates the reaction and re-emits.
-      await sendReaction(room.id, m.event_id, key);
+      await toggleReaction(room.id, m.event_id, key);
     } catch (err) {
       setActionError(String(err));
     }

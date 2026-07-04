@@ -63,10 +63,3 @@ export function relTime(ms: number): string {
   if (d < 7) return `${d}d`;
   return new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
 }
-
-// Group raw reaction keys into (emoji, count) pairs for display.
-export function groupReactions(keys: string[]): [string, number][] {
-  const m = new Map<string, number>();
-  for (const k of keys) m.set(k, (m.get(k) ?? 0) + 1);
-  return [...m.entries()];
-}

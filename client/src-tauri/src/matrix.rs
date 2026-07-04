@@ -1265,6 +1265,27 @@ pub async fn logout(
 // note in ai.rs).
 // ---------------------------------------------------------------------------
 
+/// One aggregated reaction on a message: the emoji, who reacted (display
+/// names), and whether the signed-in user is among them. `senders.len()` is
+/// the count; `reacted_by_me` drives the own-highlight + toggle-off UI.
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ReactionGroup {
+    pub key: String,
+    pub senders: Vec<String>,
+    pub reacted_by_me: bool,
+}
+
+/// Quoted context for a rich reply: who + what the message replies to. When
+/// the replied-to event's details aren't loaded yet, `sender_name` is empty
+/// and `body` is a placeholder — the UI renders a generic quote block.
+#[derive(Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ReplyPreview {
+    pub sender_name: String,
+    pub body: String,
+}
+
 /// One message line, flattened for the conversation view (reused by the AI layer).
 #[derive(Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/bindings/")]
@@ -1289,9 +1310,10 @@ pub struct ChatLine {
     /// True when this message has been edited (an m.replace landed on it);
     /// `body` already contains the LATEST text.
     pub edited: bool,
-    /// Reaction emoji on this message, one entry per reaction (duplicates mean
-    /// multiple people used the same emoji — the UI groups and counts them).
-    pub reactions: Vec<String>,
+    /// Reactions on this message, pre-aggregated per emoji (who + own-flag).
+    pub reactions: Vec<ReactionGroup>,
+    /// Present when this message is a rich reply: the quoted context.
+    pub reply_to: Option<ReplyPreview>,
     /// True while this is a *local echo* — a message we sent that the SDK has
     /// added to the timeline optimistically but the server has not yet confirmed
     /// (send-state NotSentYet). The UI dims it to signal "sending…". Cleared to
@@ -1347,10 +1369,19 @@ pub async fn room_messages(
 
     let mut replacements: std::collections::HashMap<OwnedEventId, String> =
         std::collections::HashMap::new();
-    let mut reactions: std::collections::HashMap<OwnedEventId, Vec<String>> =
-        std::collections::HashMap::new();
-    let mut raw: Vec<(matrix_sdk::ruma::OwnedUserId, String, Option<String>, f64, OwnedEventId)> =
-        Vec::new();
+    let mut reactions: std::collections::HashMap<
+        OwnedEventId,
+        Vec<(String, matrix_sdk::ruma::OwnedUserId)>,
+    > = std::collections::HashMap::new();
+    #[allow(clippy::type_complexity)]
+    let mut raw: Vec<(
+        matrix_sdk::ruma::OwnedUserId,
+        String,
+        Option<String>,
+        f64,
+        OwnedEventId,
+        Option<OwnedEventId>, // reply target, if this message is a rich reply
+    )> = Vec::new();
 
     for ev in chunk {
         let Ok(any) = ev.raw().deserialize() else { continue };
@@ -1392,12 +1423,17 @@ pub async fn room_messages(
                     MessageType::File(f) => (format!("[file] {}", f.body), None),
                     _ => continue,
                 };
+                let reply_target = match &original.content.relates_to {
+                    Some(Relation::Reply(r)) => Some(r.in_reply_to.event_id.clone()),
+                    _ => None,
+                };
                 raw.push((
                     original.sender.clone(),
                     body,
                     image,
                     u64::from(original.origin_server_ts.0) as f64,
                     original.event_id.clone(),
+                    reply_target,
                 ));
             }
             AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::Reaction(re)) => {
@@ -1405,18 +1441,28 @@ pub async fn room_messages(
                     reactions
                         .entry(original.content.relates_to.event_id.clone())
                         .or_default()
-                        .push(original.content.relates_to.key.clone());
+                        .push((original.content.relates_to.key.clone(), original.sender.clone()));
                 }
             }
             _ => {}
         }
     }
 
+    // Index for reply-preview lookups: replied-to messages are usually within
+    // the same fetched window (newest-first scan already collected them all).
+    let reply_index: std::collections::HashMap<OwnedEventId, (String, String)> = raw
+        .iter()
+        .map(|(sender, body, _, _, eid, _)| {
+            (eid.clone(), (sender.localpart().to_owned(), body.clone()))
+        })
+        .collect();
+    let me = room.client().user_id().map(|u| u.to_owned());
+
     // Second pass (async): resolve each sender's display name, cached per user.
     let mut names: std::collections::HashMap<matrix_sdk::ruma::OwnedUserId, String> =
         std::collections::HashMap::new();
     let mut lines: Vec<ChatLine> = Vec::with_capacity(raw.len());
-    for (sender, body, image, ts, event_id) in raw {
+    for (sender, body, image, ts, event_id, reply_target) in raw {
         let sender_name = match names.get(&sender) {
             Some(n) => n.clone(),
             None => {
@@ -1434,6 +1480,33 @@ pub async fn room_messages(
         // Apply the newest edit, if any, and attach this message's reactions.
         let edited = replacements.contains_key(&event_id);
         let body = replacements.get(&event_id).cloned().unwrap_or(body);
+        // Group raw (key, reactor) pairs into per-emoji ReactionGroups. This
+        // path feeds search previews / the AI layer, so reactor names stay as
+        // localparts — the live Timeline path does full name resolution.
+        let mut groups: Vec<ReactionGroup> = Vec::new();
+        for (key, reactor) in reactions.remove(&event_id).unwrap_or_default() {
+            let mine = Some(reactor.as_ref()) == me.as_deref();
+            match groups.iter_mut().find(|g| g.key == key) {
+                Some(g) => {
+                    g.senders.push(reactor.localpart().to_owned());
+                    g.reacted_by_me |= mine;
+                }
+                None => groups.push(ReactionGroup {
+                    key,
+                    senders: vec![reactor.localpart().to_owned()],
+                    reacted_by_me: mine,
+                }),
+            }
+        }
+        let reply_to = reply_target.as_ref().map(|target| {
+            match reply_index.get(target) {
+                Some((sender_name, body)) => ReplyPreview {
+                    sender_name: sender_name.clone(),
+                    body: body.clone(),
+                },
+                None => ReplyPreview { sender_name: String::new(), body: "…".into() },
+            }
+        });
         lines.push(ChatLine {
             sender: sender.to_string(),
             sender_name,
@@ -1441,7 +1514,8 @@ pub async fn room_messages(
             ts,
             image,
             edited,
-            reactions: reactions.remove(&event_id).unwrap_or_default(),
+            reactions: groups,
+            reply_to,
             event_id: Some(event_id.to_string()),
             // `room_messages` only ever returns server history (a /messages
             // backward-paginate), so none of its lines are un-sent local echoes.
@@ -1486,26 +1560,63 @@ pub async fn send_message(
     Ok(())
 }
 
-/// React to a message with an emoji (an m.reaction annotation).
+/// Toggle an emoji reaction on a message, WhatsApp-style: one reaction per
+/// person per message. Tapping a new emoji replaces your previous one (the
+/// old reaction is removed first); tapping your current emoji removes it.
+/// Runs through the open room's SDK Timeline so both directions get local
+/// echo and the redaction plumbing for free.
+///
+/// The one-reaction rule is applied globally (not just bridged rooms): it
+/// matches WhatsApp/Signal/Telegram semantics, and a bridged recipient only
+/// ever sees your latest reaction anyway — mirroring that in the UI keeps
+/// what YOU see equal to what THEY see.
 #[tauri::command]
-pub async fn send_reaction(
+pub async fn toggle_reaction(
     state: tauri::State<'_, MatrixState>,
     room_id: String,
     event_id: String,
     key: String,
 ) -> Result<(), String> {
-    use matrix_sdk::ruma::events::reaction::ReactionEventContent;
-    use matrix_sdk::ruma::events::relation::Annotation;
     use matrix_sdk::ruma::{EventId, RoomId};
-
-    let guard = state.client.read().await;
-    let client = guard.as_ref().ok_or("not logged in")?;
+    use matrix_sdk_ui::timeline::TimelineEventItemId;
 
     let rid = RoomId::parse(&room_id).map_err(|e| e.to_string())?;
-    let room = client.get_room(&rid).ok_or("room not found")?;
     let eid = EventId::parse(&event_id).map_err(|e| e.to_string())?;
 
-    room.send(ReactionEventContent::new(Annotation::new(eid, key)))
+    // Reactions are only offered in the open conversation, whose Timeline we
+    // hold. (If it's somehow not this room's, fail loud rather than guessing.)
+    let guard = state.open_timeline.read().await;
+    let timeline = guard
+        .as_ref()
+        .filter(|t| t.room().room_id() == rid)
+        .cloned()
+        .ok_or("no open timeline for this room")?;
+    drop(guard);
+
+    // One-reaction rule: find any OTHER emoji of ours on this message and
+    // remove it before adding the new one. (Same emoji = plain toggle-off,
+    // handled by toggle_reaction itself.)
+    let me = timeline.room().client().user_id().map(|u| u.to_owned());
+    if let (Some(me), Some(item)) = (me, timeline.item_by_event_id(&eid).await) {
+        if let Some(by_key) = item.content().reactions() {
+            let previous: Vec<String> = by_key
+                .iter()
+                .filter(|(k, by_sender)| {
+                    k.as_str() != key && by_sender.keys().any(|u| *u == me)
+                })
+                .map(|(k, _)| k.clone())
+                .collect();
+            for old in previous {
+                timeline
+                    .toggle_reaction(&TimelineEventItemId::EventId(eid.clone()), &old)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+    }
+
+    timeline
+        .toggle_reaction(&TimelineEventItemId::EventId(eid.clone()), &key)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -1811,6 +1922,28 @@ pub async fn subscribe_room(
 /// of a server event id. `NotSentYet` ⇒ pending (UI dims it), `SendingFailed`
 /// ⇒ failed, `Sent`/remote ⇒ neither. The event id is None until the server
 /// confirms; the next diff re-emits the same line with the real id.
+/// Resolve a user's display name via room membership, memoized per batch.
+/// (The bridge sets these to the WhatsApp contact's name; falls back to the
+/// mxid localpart.) Shared by message senders and reactors.
+async fn resolve_display_name(
+    room: &matrix_sdk::Room,
+    user: &matrix_sdk::ruma::UserId,
+    cache: &mut std::collections::HashMap<matrix_sdk::ruma::OwnedUserId, String>,
+) -> String {
+    if let Some(n) = cache.get(user) {
+        return n.clone();
+    }
+    let n = match room.get_member_no_sync(user).await {
+        Ok(Some(member)) => member
+            .display_name()
+            .map(|s| s.to_owned())
+            .unwrap_or_else(|| user.localpart().to_owned()),
+        _ => user.localpart().to_owned(),
+    };
+    cache.insert(user.to_owned(), n.clone());
+    n
+}
+
 async fn timeline_item_to_chatline(
     room: &matrix_sdk::Room,
     item: &matrix_sdk_ui::timeline::TimelineItem,
@@ -1851,32 +1984,52 @@ async fn timeline_item_to_chatline(
 
     // Resolve the sender's display name, cached per user across the batch.
     let sender = event.sender().to_owned();
-    let sender_name = match name_cache.get(&sender) {
-        Some(n) => n.clone(),
-        None => {
-            let n = match room.get_member_no_sync(&sender).await {
-                Ok(Some(member)) => member
-                    .display_name()
-                    .map(|s| s.to_owned())
-                    .unwrap_or_else(|| sender.localpart().to_owned()),
-                _ => sender.localpart().to_owned(),
-            };
-            name_cache.insert(sender.clone(), n.clone());
-            n
-        }
-    };
+    let sender_name = resolve_display_name(room, &sender, name_cache).await;
 
-    // Reactions: the Timeline aggregates them onto the target item already, keyed
-    // emoji → (sender → info). The UI wants a flat `Vec<String>` with one entry
-    // per reaction (it groups + counts), so repeat each key once per sender.
+    // Reactions: the Timeline aggregates them onto the target item already,
+    // keyed emoji → (sender → info). Keep the whole aggregation: who reacted
+    // (as display names) and whether one of them is the signed-in user —
+    // that flag drives the own-highlight and the toggle-off/one-reaction UI.
+    let me = room.client().user_id().map(|u| u.to_owned());
     let mut reactions = Vec::new();
     if let Some(by_key) = event.content().reactions() {
         for (key, by_sender) in by_key.iter() {
-            for _ in 0..by_sender.len() {
-                reactions.push(key.clone());
+            let mut senders = Vec::with_capacity(by_sender.len());
+            let mut reacted_by_me = false;
+            for uid in by_sender.keys() {
+                if Some(uid.as_ref()) == me.as_deref() {
+                    reacted_by_me = true;
+                }
+                senders.push(resolve_display_name(room, uid, name_cache).await);
             }
+            reactions.push(ReactionGroup { key: key.clone(), senders, reacted_by_me });
         }
     }
+
+    // Rich-reply context: the Timeline resolves the replied-to event's details
+    // when it can (the target is in the loaded timeline). When details aren't
+    // ready we still mark the message AS a reply with a placeholder preview.
+    let reply_to = event.content().in_reply_to().map(|details| {
+        use matrix_sdk_ui::timeline::TimelineDetails;
+        match &details.event {
+            TimelineDetails::Ready(embedded) => {
+                let sender_name = match &embedded.sender_profile {
+                    TimelineDetails::Ready(p) => p
+                        .display_name
+                        .clone()
+                        .unwrap_or_else(|| embedded.sender.localpart().to_owned()),
+                    _ => embedded.sender.localpart().to_owned(),
+                };
+                let body = embedded
+                    .content
+                    .as_message()
+                    .map(|m| m.body().to_owned())
+                    .unwrap_or_else(|| "[message]".into());
+                ReplyPreview { sender_name, body }
+            }
+            _ => ReplyPreview { sender_name: String::new(), body: "…".into() },
+        }
+    });
 
     // Send-state → pending/failed (local echoes only). Remote events have None.
     let (pending, failed) = match event.send_state() {
@@ -1906,6 +2059,7 @@ async fn timeline_item_to_chatline(
         event_id: event.event_id().map(|e| e.to_string()),
         edited: message.is_edited(),
         reactions,
+        reply_to,
         pending,
         failed,
     })

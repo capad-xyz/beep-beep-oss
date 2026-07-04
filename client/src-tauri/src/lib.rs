@@ -80,7 +80,7 @@ pub fn run() {
             matrix::set_muted,
             matrix::send_media,
             matrix::search_messages,
-            matrix::send_reaction,
+            matrix::toggle_reaction,
             matrix::edit_message,
             matrix::delete_message,
             matrix::mark_read,

@@ -98,9 +98,13 @@ export async function sendMessage(roomId: string, body: string, replyTo?: string
   return invoke<void>("send_message", { roomId, body, replyTo: replyTo ?? null });
 }
 
-/** React to a message with an emoji. */
-export async function sendReaction(roomId: string, eventId: string, key: string): Promise<void> {
-  return invoke<void>("send_reaction", { roomId, eventId, key });
+/**
+ * WhatsApp-style reaction toggle: adds the emoji, removes it if you already
+ * used it, and replaces any OTHER emoji of yours on the same message (one
+ * reaction per person per message — enforced backend-side).
+ */
+export async function toggleReaction(roomId: string, eventId: string, key: string): Promise<void> {
+  return invoke<void>("toggle_reaction", { roomId, eventId, key });
 }
 
 /** Edit one of our messages. */

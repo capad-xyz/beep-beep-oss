@@ -180,6 +180,16 @@ export async function subscribeRoom(roomId: string): Promise<void> {
 }
 
 /**
+ * Start (or restart, for a 2nd account) a WhatsApp bridge login. Resolves the
+ * bridge bot by its deterministic mxid and HARD-ASSERTS a bot-only DM before
+ * sending the login command — it can never message a real contact. Returns the
+ * bot DM's room id so the UI can render the QR from its timeline.
+ */
+export async function whatsappStartLogin(): Promise<string> {
+  return invoke<string>("whatsapp_start_login");
+}
+
+/**
  * Restart the app. Relaunching applies any scheduled event-cache wipe (the
  * panic guard's cache-reset hammer), so this is how the degraded-state banner
  * recovers from a cache-poisoning panic. Never resolves — the process re-execs.

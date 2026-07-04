@@ -114,8 +114,7 @@ export default function App() {
           <div className="text-[13px] text-mut">Step 2 of 2 — scan once, chat everywhere.</div>
         </div>
         <LinkWhatsApp
-          rooms={roomsState.rooms}
-          linked={roomsState.accounts.length > 0}
+          accountCount={roomsState.accounts.length}
           onDone={() => setLinking(false)}
         />
       </OnboardingShell>

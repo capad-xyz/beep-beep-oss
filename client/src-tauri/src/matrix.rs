@@ -1568,6 +1568,68 @@ pub async fn send_message(
     Ok(())
 }
 
+/// SAFETY-CRITICAL. Start (or restart, for a 2nd account) a WhatsApp bridge
+/// login the ONLY safe way.
+///
+/// Background: the frontend used to locate the bridge management room by FUZZY
+/// display-NAME matching and auto-send "login qr" to it. Under the room-list
+/// churn of a fresh account's portal import, that resolution flipped between
+/// rooms and sprayed "login qr" into real contact chats (confirmed incident,
+/// 2026-07-04 — got a WhatsApp account banned). Never again: the bot is
+/// resolved by its DETERMINISTIC mxid, the DM is created/reused for exactly
+/// that user, and we HARD-ASSERT the room has no member other than us and the
+/// bot before sending. If that assertion fails we abort — a failed login is
+/// infinitely preferable to a message reaching a stranger.
+///
+/// The bot localpart matches the bridge's `appservice.bot_username`
+/// (mautrix-whatsapp default `whatsappbot`); the domain is our own homeserver.
+/// Returns the bot DM's room id so the UI can render the QR from its timeline.
+#[tauri::command]
+pub async fn whatsapp_start_login(
+    state: tauri::State<'_, MatrixState>,
+) -> Result<String, String> {
+    use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+    use matrix_sdk::ruma::UserId;
+    use matrix_sdk::RoomMemberships;
+
+    let guard = state.client.read().await;
+    let client = guard.as_ref().ok_or("not logged in")?;
+    let me = client.user_id().ok_or("no user id")?.to_owned();
+
+    // Deterministic bot identity — NOT a room-name guess.
+    let bot = UserId::parse(format!("@whatsappbot:{}", me.server_name()))
+        .map_err(|e| format!("bad bridge bot id: {e}"))?;
+
+    // create_dm returns the canonical DM with exactly this user — reuses the
+    // existing management room if present, else creates a fresh 2-person room
+    // and invites only the bot.
+    let room = client.create_dm(&bot).await.map_err(|e| e.to_string())?;
+
+    // HARD SAFETY GATE: every active member must be either us or the bot, and
+    // the bot must be present. Anyone else → refuse to send.
+    let members = room
+        .members(RoomMemberships::ACTIVE)
+        .await
+        .map_err(|e| e.to_string())?;
+    let only_us_and_bot = members
+        .iter()
+        .all(|m| m.user_id() == me || m.user_id() == bot);
+    let bot_present = members.iter().any(|m| m.user_id() == bot);
+    if !only_us_and_bot || !bot_present {
+        return Err(format!(
+            "refusing WhatsApp login: {} is not a bot-only DM ({} active members)",
+            room.room_id(),
+            members.len()
+        ));
+    }
+
+    room.send(RoomMessageEventContent::text_plain("login qr"))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(room.room_id().to_string())
+}
+
 /// Toggle an emoji reaction on a message, WhatsApp-style: one reaction per
 /// person per message. Tapping a new emoji replaces your previous one (the
 /// old reaction is removed first); tapping your current emoji removes it.

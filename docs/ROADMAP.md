@@ -50,13 +50,16 @@ test passes; 6 months is acceptable.
       **Containment is the plan, not the fallback** — it defends the whole
       class (any cache-vs-server disagreement), not just this bug, on the
       principle *the cache is disposable, the server is truth*:
-      1. *Phase 2 kickoff (~half a day):* Rust panic hook (log + backtrace,
-         Tauri event) for frequency telemetry; keep the join throttle;
-         cache-reset hammer (auto-wipe event-cache SQLite after N panics per
-         session; cost = one cold open) wired to the panic counter.
-      2. *30 minutes, not drift:* post our reproduction recipe on #5416
-         (server-recreate against populated cache; un-throttled burst joins).
-         Makes the fix someone's problem without making it ours.
+      1. [x] *Shipped 2026-07-05* (`src-tauri/src/panic_guard.rs`): chained
+         panic hook → `<app_data>/panics.log` (+ "rust-panic" Tauri event,
+         per-session counters); cache-class panics (linked_chunk/event_cache)
+         ≥2 per session → flag file → next launch wipes ONLY
+         `matrix-sdk-event-cache.sqlite3` (crypto/state/media untouched).
+         Verified live: planted flag → 3 files wiped at boot → flag consumed
+         → cache cold-rebuilt → healthy sync + timelines.
+      2. [x] *Posted 2026-07-05:* reproduction recipe on #5416
+         (matrix-rust-sdk#5416, comment 4883568902) — both triggers + offer
+         to test candidate patches.
       3. *Contingency with a trigger, NOT a scheduled task:* SDK surgery
          (root-cause + upstream PR + temporary `[patch.crates-io]` fork) is
          justified ONLY if Gate G2 fails with containment in place — a

@@ -16,11 +16,16 @@
 // TEMP(ai): re-enable with AI
 // mod ai;
 mod matrix;
+mod panic_guard;
 
 use matrix::MatrixState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Panic telemetry + event-cache containment (docs/ROADMAP.md Phase 1).
+    // Installed before anything can spawn a task that panics.
+    panic_guard::install();
+
     tauri::Builder::default()
         // Desktop notifications (fired from matrix.rs on incoming messages).
         .plugin(tauri_plugin_notification::init())
@@ -28,6 +33,11 @@ pub fn run() {
         // build — force it visible + focused on startup so it never gets lost.
         .setup(|app| {
             use tauri::Manager;
+            // Bind the panic guard to the app (log/flag paths + event channel)
+            // and run any scheduled event-cache wipe. Must precede the first
+            // Matrix client build — the webview (and thus login/restore)
+            // isn't up yet here, so the store files are guaranteed unlocked.
+            panic_guard::arm(app.handle());
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.unminimize();
                 let _ = win.show();

@@ -47,22 +47,26 @@ test passes; 6 months is acceptable.
 - [ ] **linked_chunk panic plan** (upstream matrix-rust-sdk#5416 — same panic,
       open since Jul 2025, no fix exists anywhere; "wait for 0.19" is not a
       plan). Three layers:
-      1. *Now:* Rust panic hook (log + backtrace to file, Tauri event) for
-         frequency telemetry; keep the join throttle; **post our reproduction
-         recipe on #5416 immediately** (server-recreate against populated
-         cache; un-throttled burst joins) — the repro is valuable regardless
-         of who writes the fix.
-      2. *Phase 2, time-boxed one session:* attempt root cause with the repro
-         (as_vector.rs:498 — AsVector observer vs concurrent chunk mutation).
-         If fixed → PR upstream + carry via `[patch.crates-io]` fork pinned to
-         one rev until released, then delete the patch. Fork-drift is
-         fail-loud: the patch stops matching on the next version bump, forcing
-         a decision; add a weekly CI cron that opens an issue when a new
-         matrix-sdk publishes so the frozen window can't be forgotten.
-         If not fixed in the box → containment only (cache-reset hammer:
-         auto-wipe event-cache SQLite after N panics/session; cost = one cold
-         open), repro stays on the issue.
-      3. *Gate G2 before v1.0* (see Gates below).
+      **Containment is the plan, not the fallback** — it defends the whole
+      class (any cache-vs-server disagreement), not just this bug, on the
+      principle *the cache is disposable, the server is truth*:
+      1. *Phase 2 kickoff (~half a day):* Rust panic hook (log + backtrace,
+         Tauri event) for frequency telemetry; keep the join throttle;
+         cache-reset hammer (auto-wipe event-cache SQLite after N panics per
+         session; cost = one cold open) wired to the panic counter.
+      2. *30 minutes, not drift:* post our reproduction recipe on #5416
+         (server-recreate against populated cache; un-throttled burst joins).
+         Makes the fix someone's problem without making it ours.
+      3. *Contingency with a trigger, NOT a scheduled task:* SDK surgery
+         (root-cause + upstream PR + temporary `[patch.crates-io]` fork) is
+         justified ONLY if Gate G2 fails with containment in place — a
+         crash-loop that survives a cache wipe. Rationale for not scheduling
+         it: deep concurrent-invariant code where a wrong fix = silent
+         ordering corruption (worse than a loud panic); time-boxes on
+         year-old concurrency bugs rarely hold; 0.19's event-cache rework may
+         obsolete any patch. If it ever triggers: weekly CI cron watching
+         crates.io bounds the fork's frozen window.
+      4. *Gate G2 before v1.0* (see Gates below) is the arbiter.
 - [x] CI pipeline: gitleaks (full history, container invocation — the GH
       action needs a license for org repos), tsc + vite build, cargo
       check/test on windows-latest, ts-rs bindings-drift gate.

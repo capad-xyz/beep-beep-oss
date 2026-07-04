@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # Keep Rust builds incremental-cache friendly in CI.
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  # Secret hygiene first: fails fast and cheap, scans the FULL history.
+  gitleaks:
+    name: gitleaks (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history — we scan every commit, not just the diff
+      # Container invocation instead of gitleaks-action: the action requires a
+      # license key for org-owned repos; the scanner itself is free.
+      - name: gitleaks scan
+        run: >
+          docker run --rm -v "$PWD:/repo"
+          ghcr.io/gitleaks/gitleaks:latest
+          detect --source=/repo --log-opts=--all --no-banner --redact
+
+  frontend:
+    name: frontend (tsc + vite build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vite build
+
+  rust:
+    name: rust (check + test)
+    runs-on: windows-latest # the shipping desktop target; catches Windows-only breakage
+    defaults:
+      run:
+        working-directory: client/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: client/src-tauri
+      # Tauri's build script needs the frontend dist dir to exist.
+      - name: Stub frontend dist
+        shell: bash
+        run: mkdir -p ../dist
+      - run: cargo check --locked
+      # `cargo test --lib` also regenerates the ts-rs bindings; a diff here
+      # means someone changed a Rust type and forgot to commit the bindings.
+      - run: cargo test --lib --locked
+      - name: Bindings are up to date
+        shell: bash
+        run: |
+          git diff --exit-code ../src/bindings \
+            || { echo '::error::TS bindings out of date — run `cargo test --lib` and commit client/src/bindings'; exit 1; }

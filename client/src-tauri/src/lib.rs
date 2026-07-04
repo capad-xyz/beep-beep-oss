@@ -22,6 +22,8 @@ use matrix::MatrixState;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Desktop notifications (fired from matrix.rs on incoming messages).
+        .plugin(tauri_plugin_notification::init())
         // The window can open minimized if focus shifts during a (long) dev
         // build — force it visible + focused on startup so it never gets lost.
         .setup(|app| {
@@ -43,11 +45,30 @@ pub fn run() {
             matrix::login,
             matrix::restore_session,
             matrix::list_rooms,
+            matrix::list_accounts,
             matrix::logout,
             matrix::room_messages,
             matrix::send_message,
             matrix::room_avatar,
+            matrix::fetch_media,
             matrix::join_room,
+            matrix::accept_all_invites,
+            matrix::subscribe_room,
+            matrix::set_pinned,
+            matrix::set_archived,
+            matrix::set_muted,
+            matrix::send_media,
+            matrix::search_messages,
+            matrix::send_reaction,
+            matrix::edit_message,
+            matrix::delete_message,
+            matrix::mark_read,
+            matrix::typing,
+            // Live open-room Timeline (SDK local echo + event cache).
+            matrix::open_room_timeline,
+            matrix::close_room_timeline,
+            matrix::paginate_room_timeline,
+            matrix::send_message_timeline,
             // TEMP(ai): re-enable with AI
             // ai::ai_set_provider,
             // ai::ai_active_provider,

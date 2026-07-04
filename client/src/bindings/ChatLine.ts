@@ -13,4 +13,41 @@ sender_name: string, body: string,
  * Milliseconds since the Unix epoch (origin_server_ts). f64 so it maps to a
  * plain TS `number` for `new Date(ts)` — u64 would surface as `bigint`.
  */
-ts: number, };
+ts: number, 
+/**
+ * For image messages: an opaque handle (a serialized MediaSource) the UI
+ * passes to `fetch_media` to lazily load the picture. None for text. Lazy so
+ * opening a photo-heavy chat doesn't block on downloading every image at once.
+ */
+image: string | null, 
+/**
+ * The Matrix event id — the handle for reactions / reply / edit / delete.
+ * None only for local echoes that haven't been accepted by the server yet
+ * (the SDK fills it in once the send succeeds, and the next timeline diff
+ * re-emits this line with the real id).
+ */
+event_id: string | null, 
+/**
+ * True when this message has been edited (an m.replace landed on it);
+ * `body` already contains the LATEST text.
+ */
+edited: boolean, 
+/**
+ * Reaction emoji on this message, one entry per reaction (duplicates mean
+ * multiple people used the same emoji — the UI groups and counts them).
+ */
+reactions: Array<string>, 
+/**
+ * True while this is a *local echo* — a message we sent that the SDK has
+ * added to the timeline optimistically but the server has not yet confirmed
+ * (send-state NotSentYet). The UI dims it to signal "sending…". Cleared to
+ * false once the send is confirmed (send-state Sent) and the line re-emits
+ * with its real `event_id`. `false` for everything that came from the server.
+ */
+pending: boolean, 
+/**
+ * True when this local echo *failed* to send (send-state SendingFailed) —
+ * the SDK keeps it in the timeline so the UI can show a failed marker rather
+ * than silently dropping the user's message. `false` otherwise.
+ */
+failed: boolean, };

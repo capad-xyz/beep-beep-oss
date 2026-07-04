@@ -177,6 +177,15 @@ depth chosen by measurement, not guesswork.
       token set.
 
 ### Phase 5 — OSS launch
+- [ ] **Fresh-install onboarding gap** (found in the 2026-07-05 nuke rehearsal):
+      the app's WhatsApp-link step looks for an *existing* bridge-bot DM, but a
+      clean install has none — so onboarding can't initiate the QR flow
+      unassisted (had to create the admin↔@whatsappbot DM via API). The
+      onboarding must create that DM itself (invite the bot / start the chat)
+      before sending the login command. Direct Gate-G1 blocker.
+- [ ] Admin-user registration from the app's first-run wizard (today it's a
+      manual `register_new_matrix_user` — a stranger can't do that from docs
+      alone in <30 min).
 - [ ] Packaging: NSIS/MSI installer, tauri-updater, code-signing cert.
 - [ ] One-command compose + first-run wizard hardening (register admin from the
       app, no manual `register-user`).

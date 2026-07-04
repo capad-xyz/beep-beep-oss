@@ -47,3 +47,6 @@ src-tauri/gen/
 .DS_Store
 Thumbs.db
 *.swp
+
+# Local nuke/reset backups — contain signing keys + tokens, never commit
+.nuke-backup-*/

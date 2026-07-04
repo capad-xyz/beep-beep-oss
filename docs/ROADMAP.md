@@ -85,8 +85,12 @@ All data-layer first (bindings regen), UI is largely already built to receive:
       **WhatsApp one-reaction rule** (new emoji replaces your previous one;
       same emoji toggles off; applied globally — matches WA/Signal/TG and what
       bridged recipients see). Verified live incl. interactive toggle.
-- [ ] **Delivery/read ticks**: sent → delivered → read mapped from Matrix
-      receipts / bridge ticks.
+- [x] **Read ticks** (2026-07-05): `read_by_other` on ChatLine from Timeline
+      read-receipts, suffix-folded; single check → oxblood double on read.
+      Verified server-side (receipt on target event, own-receipt filtered).
+      Note: WhatsApp's *delivered* (grey ✓✓) state isn't distinctly surfaced
+      by the bridge/SDK yet — we show sent (✓) → read (✓✓). Revisit if the
+      bridge exposes delivery separately.
 - [ ] **Voice notes**: playback first (audio element + waveform-lite), recording
       second.
 - [ ] **Media completion**: video/file rendering, click-to-fullscreen image

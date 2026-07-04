@@ -64,6 +64,13 @@ All data-layer first (bindings regen), UI is largely already built to receive:
         numbers shown only when the bridge discloses them; all number entry
         flows through `resolve_identifier`. LID↔PN merging is upstream's job
         (one more reason to stay on current bridge versions).
+      - **WhatsApp @usernames (future-proofing only, no build)**: usernames
+        ride the LID + in-WA-contact-store architecture; support arrives via
+        whatsmeow, not us. Keep the seam ready: NewChatModal input is a generic
+        identifier field (validation in the per-network adapter — Telegram
+        needs @handles at Phase 4 anyway), and the adapter error enum reserves
+        "username not found" and "PIN required" variants. Revisit when the
+        rollout leaves beta.
       - **Dispatch contact store**: user-assigned contact names live in Matrix
         account data (per-user, syncs to future devices, network-agnostic),
         with per-network write-through adapters: Telegram = real server-side

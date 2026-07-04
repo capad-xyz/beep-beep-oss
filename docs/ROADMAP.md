@@ -41,10 +41,28 @@ test passes; 6 months is acceptable.
       IS the latest published release** — the `linked_chunk` panic fix exists
       only on unreleased git, and pinning git contradicts the latest-stable
       policy. Done instead: full `cargo update` within semver (tauri 2.11.5,
-      rustls, quinn, …), bindings verified drift-free. **Watch-item: bump to
-      0.19 in the first bump-week after it ships** — that's when the
-      SyncService/Timeline migration project actually happens. Until then the
-      panic is tolerable: the recovery loop self-heals it (observed live).
+      rustls, quinn, …), bindings verified drift-free. Bump to 0.19 in the
+      first bump-week after it ships (that's the SyncService/Timeline
+      migration project).
+- [ ] **linked_chunk panic plan** (upstream matrix-rust-sdk#5416 — same panic,
+      open since Jul 2025, no fix exists anywhere; "wait for 0.19" is not a
+      plan). Three layers:
+      1. *Now:* Rust panic hook (log + backtrace to file, Tauri event) for
+         frequency telemetry; keep the join throttle; **post our reproduction
+         recipe on #5416 immediately** (server-recreate against populated
+         cache; un-throttled burst joins) — the repro is valuable regardless
+         of who writes the fix.
+      2. *Phase 2, time-boxed one session:* attempt root cause with the repro
+         (as_vector.rs:498 — AsVector observer vs concurrent chunk mutation).
+         If fixed → PR upstream + carry via `[patch.crates-io]` fork pinned to
+         one rev until released, then delete the patch. Fork-drift is
+         fail-loud: the patch stops matching on the next version bump, forcing
+         a decision; add a weekly CI cron that opens an issue when a new
+         matrix-sdk publishes so the frozen window can't be forgotten.
+         If not fixed in the box → containment only (cache-reset hammer:
+         auto-wipe event-cache SQLite after N panics/session; cost = one cold
+         open), repro stays on the issue.
+      3. *Gate G2 before v1.0* (see Gates below).
 - [x] CI pipeline: gitleaks (full history, container invocation — the GH
       action needs a license for org repos), tsc + vite build, cargo
       check/test on windows-latest, ts-rs bindings-drift gate.
@@ -158,6 +176,24 @@ All data-layer first (bindings regen), UI is largely already built to receive:
     later timeline (~2027). The only path to *sanctioned* WhatsApp calls in a
     third-party client; if it matures, the hosted tier (Phase 6) is the entity
     positioned to use it. Ref: matrix-org/dma-demo-app-bridge-whatsapp.
+
+## v1.0 Gates
+
+Gates are blocking pass/fail tests tied to specific accepted risks — run
+before the release is allowed to ship. To-dos build the product; gates
+interrogate it.
+
+- **G1 — Stranger test** (setup-UX risk): a stranger on Windows gets
+  WhatsApp-in-Dispatch in <30 min without editing a config file.
+- **G2 — Update-path resilience** (linked_chunk panic risk): with a populated
+  event cache and panic telemetry on, recreate the Synapse container 5×
+  (= the self-hoster's `compose pull && up -d` routine, our known panic
+  trigger). Every run: sync self-heals to running without app restart; ≤1
+  panic per cycle; no data loss (timeline spot-check vs a second client); no
+  duplicated/reordered messages; no crash-loop. Fail → the cache-reset hammer
+  becomes mandatory and the gate re-runs.
+- **G3 — Secret hygiene** (already automated): full-history gitleaks green in
+  CI + manual pass at launch.
 
 ## Known risks (carry-forward)
 - matrix-sdk 0.x churn (mitigated by bump cadence + CI).

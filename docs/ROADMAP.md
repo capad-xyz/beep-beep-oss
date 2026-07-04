@@ -216,10 +216,13 @@ interrogate it.
 - **G2 — Update-path resilience** (linked_chunk panic risk): with a populated
   event cache and panic telemetry on, recreate the Synapse container 5×
   (= the self-hoster's `compose pull && up -d` routine, our known panic
-  trigger). Every run: sync self-heals to running without app restart; ≤1
-  panic per cycle; no data loss (timeline spot-check vs a second client); no
-  duplicated/reordered messages; no crash-loop. Fail → the cache-reset hammer
-  becomes mandatory and the gate re-runs.
+  trigger). Every run: sync self-heals to running without app restart; **open
+  a conversation and confirm its timeline shows the latest messages** — NOT
+  just that the room-list preview is current (the 2026-07-05 bug: room list
+  updated while the open timeline stayed frozen, because they use different
+  data paths); a cache-class panic must raise the degraded banner; restart
+  must wipe + recover with no data loss (timeline spot-check vs a second
+  client); no duplicated/reordered messages; no crash-loop.
 - **G3 — Secret hygiene** (already automated): full-history gitleaks green in
   CI + manual pass at launch.
 

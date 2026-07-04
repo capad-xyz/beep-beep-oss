@@ -120,8 +120,19 @@ All data-layer first (bindings regen), UI is largely already built to receive:
   after Phase 5; drags E2EE/cross-signing + key backup with it (second device
   makes encryption real).
 - **AI layer** (code exists, uncommitted) — revisit post-launch.
-- **Calls** — UI stub ships; no backend until Matrix VoIP (WhatsApp calls can't
-  bridge).
+- **Calls** — three-lane plan, honesty first (bridges relay store-and-forward
+  messages; realtime E2E call media cannot be bridged — WhatsApp/Telegram call
+  audio/video will NEVER flow through Dispatch, and we say so):
+  1. **Signaling relay** (small, fits Phase 3): bridge call-offer events →
+     ringing notification "X is calling on WhatsApp — answer on your phone" +
+     cross-network call history in the Calls surface (missed in red, per spec).
+  2. **Matrix-native 1:1 calls** (post-v1.0, rides behind mobile): `m.call.*`
+     WebRTC in the webview (WebView2 supports it) + coturn in compose. Gives
+     "Create call link" a real 1:1 backend; only useful once other
+     Dispatch/Matrix users exist to call.
+  3. **Group calls via MatrixRTC** (Element Call + LiveKit SFU): only on user
+     demand, as an optional compose profile — an SFU fights the 20-minute-setup
+     cut-line.
 
 ## Known risks (carry-forward)
 - matrix-sdk 0.x churn (mitigated by bump cadence + CI).

@@ -25,7 +25,14 @@ use std::sync::OnceLock;
 use tauri::Emitter;
 
 /// Event-cache-class panics in one session before we schedule a wipe.
-const WIPE_THRESHOLD: u32 = 2;
+/// ONE is enough: a single `linked_chunk` panic (upstream #5416) leaves the
+/// persisted event cache inconsistent (`InvalidItemIndex` on subsequent ops),
+/// which silently freezes open-room timelines even though sync self-heals and
+/// the room list (a separate RoomListService path) keeps updating. Confirmed
+/// 2026-07-05: wiping the event cache and relaunching clears both the panic
+/// on load and the frozen timelines. The cost — one cold open — is far cheaper
+/// than a silently-stale conversation.
+const WIPE_THRESHOLD: u32 = 1;
 
 /// Size cap for panics.log; at startup a larger file rolls to panics.log.1
 /// (replacing the previous roll). Bounds total footprint at ~2× this cap
@@ -151,6 +158,14 @@ pub fn arm(app: &tauri::AppHandle) {
 
     let _ = APP_DATA_DIR.set(dir);
     let _ = APP_HANDLE.set(app.clone());
+}
+
+/// Restart the app. Used by the UI's degraded-state banner after a cache-class
+/// panic: relaunching runs `arm()`, which applies the scheduled event-cache
+/// wipe and starts clean. `restart()` never returns (it re-execs the process).
+#[tauri::command]
+pub fn restart_app(app: tauri::AppHandle) {
+    app.restart();
 }
 
 fn append(path: &Path, text: &str) -> std::io::Result<()> {

@@ -81,6 +81,7 @@ pub fn run() {
             matrix::send_media,
             matrix::search_messages,
             matrix::toggle_reaction,
+            panic_guard::restart_app,
             matrix::edit_message,
             matrix::delete_message,
             matrix::mark_read,

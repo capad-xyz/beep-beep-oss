@@ -4,8 +4,10 @@ import { useSession } from "@/hooks/useSession";
 import { useRooms } from "@/hooks/useRooms";
 import { useTimeline } from "@/hooks/useTimeline";
 import { useSyncState } from "@/hooks/useSyncState";
+import { usePanicGuard } from "@/hooks/usePanicGuard";
 import { TitleBar } from "@/components/TitleBar";
 import { SyncBanner } from "@/components/SyncBanner";
+import { DegradedBanner } from "@/components/DegradedBanner";
 import { Rail, type Surface } from "@/components/Rail";
 import { ChatList } from "@/components/chats/ChatList";
 import { ConversationPane } from "@/components/conversation/ConversationPane";
@@ -47,6 +49,7 @@ export default function App() {
     }
   });
   const syncState = useSyncState();
+  const degraded = usePanicGuard();
   const refreshRoomsRef = useRef<() => void>(() => {});
   const tl = useTimeline(session.userId, () => refreshRoomsRef.current());
   const roomsState = useRooms(session.userId, tl.openRoom?.id ?? null);
@@ -228,6 +231,7 @@ export default function App() {
       <div className="flex h-screen flex-col overflow-hidden bg-ground text-ink">
         <TitleBar />
         <SyncBanner state={session.userId ? syncState : null} />
+        {degraded && <DegradedBanner />}
         {body}
       </div>
     </TooltipProvider>

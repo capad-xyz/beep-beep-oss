@@ -178,3 +178,12 @@ export async function acceptAllInvites(): Promise<number> {
 export async function subscribeRoom(roomId: string): Promise<void> {
   return invoke<void>("subscribe_room", { roomId });
 }
+
+/**
+ * Restart the app. Relaunching applies any scheduled event-cache wipe (the
+ * panic guard's cache-reset hammer), so this is how the degraded-state banner
+ * recovers from a cache-poisoning panic. Never resolves — the process re-execs.
+ */
+export async function restartApp(): Promise<void> {
+  return invoke<void>("restart_app");
+}

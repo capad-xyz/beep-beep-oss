@@ -129,6 +129,33 @@ All data-layer first (bindings regen), UI is largely already built to receive:
         Phone OS address-book write-back: only possible from mobile; parked
         with the mobile track.
 
+### Phase 2.5 — Timeline loading & history depth (dogfooding-driven)
+Guiding constraint: **keep the current speed** (the thing that already feels
+better than Beeper). Do NOT eager-load everything — load intelligently to a
+depth chosen by measurement, not guesswork.
+- [ ] **Performance matrix first**: measure open-latency, memory, and disk vs
+      history depth and number of warmed rooms. The matrix decides the
+      defaults below — no magic numbers.
+- [ ] **(Layer 1) Cross-room timeline warming**: recent/important rooms open
+      *instantly* (warm their timelines in the background by recency + unread +
+      pinned), instead of building the Timeline only on click. SDK-limited on
+      0.18 (no multi-room event-cache prefetch); revisit depth after 0.19.
+- [ ] **(Layer 2) Within-room initial window + backfill**: load a larger
+      initial window and background-backfill history to a sensible depth so
+      "load older" isn't needed for conversations WhatsApp Desktop shows fine.
+      Distinct from Layer 1 (this is depth *inside* the open room; Layer 1 is
+      *which* rooms are ready). Both bounded by the perf matrix.
+- [ ] **Degraded-recovery rework** (replaces the restart-prompt banner from the
+      2026-07-05 containment fix — bad UX mid-typing): (a) **persist composer
+      drafts** so no recovery ever loses typing; (b) attempt **in-place
+      open-room Timeline rebuild** on detected staleness instead of a restart;
+      (c) only if that fails, a **passive, dismissible** notice — never a
+      modal restart demand.
+- [ ] **Verify bridge read-ticks** (Phase-2 carryover): real 2-person WhatsApp
+      chat test to confirm mautrix maps WhatsApp delivered/read → Matrix
+      receipts, so `read_by_other` double-ticks actually light up on bridged
+      chats (self-chat has no "other", so it can't validate this).
+
 ### Phase 3 — Daily-driver polish
 - [ ] Taskbar unread badge + tray presence.
 - [ ] Notification click-to-open-room (Windows COM activation on the AUMID

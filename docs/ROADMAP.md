@@ -123,16 +123,33 @@ All data-layer first (bindings regen), UI is largely already built to receive:
 - **Calls** — three-lane plan, honesty first (bridges relay store-and-forward
   messages; realtime E2E call media cannot be bridged — WhatsApp/Telegram call
   audio/video will NEVER flow through Dispatch, and we say so):
-  1. **Signaling relay** (small, fits Phase 3): bridge call-offer events →
-     ringing notification "X is calling on WhatsApp — answer on your phone" +
-     cross-network call history in the Calls surface (missed in red, per spec).
-  2. **Matrix-native 1:1 calls** (post-v1.0, rides behind mobile): `m.call.*`
-     WebRTC in the webview (WebView2 supports it) + coturn in compose. Gives
-     "Create call link" a real 1:1 backend; only useful once other
-     Dispatch/Matrix users exist to call.
-  3. **Group calls via MatrixRTC** (Element Call + LiveKit SFU): only on user
-     demand, as an optional compose profile — an SFU fights the 20-minute-setup
-     cut-line.
+  1. **Signaling relay** (small, fits Phase 3): enable the bridge's
+     `call_start_notices`, render those notice events as a ringing notification
+     ("X is calling on WhatsApp — answer on your phone") + cross-network call
+     history in the Calls surface (missed in red, per spec).
+  1.5 **Call-link reply** (small, pairs with 1): one-click reply to a ringing
+     call with an **Element Call guest link** — the caller opens it in their
+     phone browser, no app install, E2EE media. Uses the public
+     call.element.io instance at first (settings toggle + honest docs note
+     that the SFU relay is third-party); self-hosted RTC becomes the later
+     privacy upgrade. Also gives the spec's "Create call link" card a real
+     backend. Quiet escape hatch alongside it: "Open in WhatsApp Desktop"
+     deep-link (`whatsapp://send?phone=…`) for users who run the official
+     desktop app as a second linked device.
+  2. **Matrix-native / self-hosted RTC** (post-v1.0, rides behind mobile):
+     coturn (+ optionally Element Call/LiveKit as a compose profile) so lane
+     1.5 stops depending on public infra; `m.call.*` 1:1 in the webview
+     (WebView2 supports WebRTC).
+  3. **Group calls via MatrixRTC** — only on user demand; an SFU fights the
+     20-minute-setup cut-line.
+  - **Never**: third-party WhatsApp call APIs (green-api-style cloud sessions)
+    — they hand the user's session to a third party, destroy the privacy
+    story, and are the highest-ban-risk pattern. Not even as a plugin.
+  - **Watch-item (6-month cadence)**: EU DMA interop — Meta is required to
+    open WhatsApp messaging interop now and call interop on the regulation's
+    later timeline (~2027). The only path to *sanctioned* WhatsApp calls in a
+    third-party client; if it matures, the hosted tier (Phase 6) is the entity
+    positioned to use it. Ref: matrix-org/dma-demo-app-bridge-whatsapp.
 
 ## Known risks (carry-forward)
 - matrix-sdk 0.x churn (mitigated by bump cadence + CI).

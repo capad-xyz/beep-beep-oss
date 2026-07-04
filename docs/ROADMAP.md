@@ -120,6 +120,12 @@ All data-layer first (bindings regen), UI is largely already built to receive:
       registered in Phase 7 of the redesign).
 - [ ] Per-room drafts that survive switching; mark-as-unread.
 - [ ] Link previews.
+- [ ] Settings → Storage: per-store sizes (media / event cache / state /
+      crypto) + "Clear caches" button reusing the panic-guard wipe path
+      (event cache + media only — crypto is E2EE keys and must never be
+      cleared). Context: media self-cleans (0.18 MediaRetentionPolicy
+      defaults: 400 MiB cap / 20 MiB per file / 60-day expiry); event cache
+      has NO retention knobs in 0.18 (tiny in practice; revisit at 0.19).
 
 ### Phase 4 — Second network: Telegram
 - [ ] mautrix-telegram service in compose; provisioning UX on the Phase-2 seam.

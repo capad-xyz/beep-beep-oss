@@ -45,11 +45,13 @@ export function MessageBubble({
           {formatTime(m.ts)}
           {own &&
             (m.read_by_other ? (
-              <span className="text-oxblood" title="Read">
-                <Icon name="checks" size={12} strokeWidth={2.2} />
+              <span className="ml-0.5 text-oxblood" title="Read">
+                <Icon name="checks" size={15} strokeWidth={2} />
               </span>
             ) : (
-              <Icon name="check" size={11} strokeWidth={2.4} />
+              <span className="ml-0.5 text-mut" title="Sent">
+                <Icon name="check" size={13} strokeWidth={2.2} />
+              </span>
             ))}
         </>
       )}

@@ -7,6 +7,7 @@ import {
   sendMessageTimeline, toggleReaction, editMessage, deleteMessage,
   markRead, setTyping, sendMedia, joinRoom, subscribeRoom,
 } from "@/api";
+import { loadDraft, saveDraft } from "@/lib/drafts";
 
 // Everything about the open conversation: the SDK Timeline lifecycle, live
 // "timeline-items"/"typing" listeners, composing (send/reply/edit), reactions,
@@ -109,6 +110,7 @@ export function useTimeline(userId: string | null, onRoomJoined?: () => void) {
     setActionError(null);
     setReplyTo(null);
     setEditing(null);
+    setDraft(loadDraft(room.id)); // per-room draft: restore what was typed here
     setReachedStart(false);
     setLoadingMsgs(true);
     openRoomTimeline(room.id)
@@ -164,6 +166,7 @@ export function useTimeline(userId: string | null, onRoomJoined?: () => void) {
     const room = openRoomRef.current;
     if (!room || !userId || !body) return;
     setDraft("");
+    saveDraft(room.id, ""); // sent → clear the persisted draft
     setTyping(room.id, false).catch(() => {});
 
     // Edit mode: replace the target message's text. No manual refetch — the open
@@ -176,6 +179,7 @@ export function useTimeline(userId: string | null, onRoomJoined?: () => void) {
       } catch (err) {
         setActionError(String(err));
         setDraft(body);
+        saveDraft(room.id, body); // send failed → keep the text (survives restart)
       }
       return;
     }
@@ -216,8 +220,10 @@ export function useTimeline(userId: string | null, onRoomJoined?: () => void) {
 
   function updateDraft(text: string) {
     setDraft(text);
-    // Typing notice; the SDK rate-limits repeats so per-keystroke is fine.
     const room = openRoomRef.current;
+    // Persist per-room (skip while editing — that text isn't a room draft).
+    if (room && !editing) saveDraft(room.id, text);
+    // Typing notice; the SDK rate-limits repeats so per-keystroke is fine.
     if (room) setTyping(room.id, true).catch(() => {});
   }
 

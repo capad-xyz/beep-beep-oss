@@ -43,7 +43,7 @@ const PATHS: Record<IconName, React.ReactNode> = {
   more: (<><circle cx="12" cy="5" r="1.4" /><circle cx="12" cy="12" r="1.4" /><circle cx="12" cy="19" r="1.4" /></>),
   // Message-state glyphs (same stroke voice as the spec set).
   check: <path d="M20 6 9 17l-5-5" />,
-  checks: <path d="M18 7 8.5 16.5 5 13M22 7l-9.5 9.5-1.2-1.2" />,
+  checks: (<><path d="M18 6 7 17l-5-5" /><path d="m22 10-7.5 7.5L13 16" /></>),
   clock: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></>),
   alert: (<><circle cx="12" cy="12" r="9" /><path d="M12 8v4M12 16h.01" /></>),
   archive: (<><rect x="3" y="4" width="18" height="5" rx="1.5" /><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" /></>),

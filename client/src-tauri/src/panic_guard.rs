@@ -27,6 +27,11 @@ use tauri::Emitter;
 /// Event-cache-class panics in one session before we schedule a wipe.
 const WIPE_THRESHOLD: u32 = 2;
 
+/// Size cap for panics.log; at startup a larger file rolls to panics.log.1
+/// (replacing the previous roll). Bounds total footprint at ~2× this cap
+/// while keeping one generation for post-mortems.
+const LOG_ROTATE_BYTES: u64 = 512 * 1024;
+
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 static PANIC_COUNT: AtomicU32 = AtomicU32::new(0);
@@ -111,6 +116,14 @@ pub fn arm(app: &tauri::AppHandle) {
     let Ok(dir) = app.path().app_data_dir() else {
         return;
     };
+
+    // Rotate the panic log before this session appends to it: no TTL games,
+    // just a hard size bound (an active crash-loop writes fast; time doesn't
+    // bound size, size does).
+    let log = dir.join("panics.log");
+    if std::fs::metadata(&log).map(|m| m.len() > LOG_ROTATE_BYTES).unwrap_or(false) {
+        let _ = std::fs::rename(&log, dir.join("panics.log.1")); // replaces prior roll
+    }
 
     let flag = flag_path(&dir);
     if flag.exists() {

@@ -1312,6 +1312,12 @@ pub struct ChatLine {
     pub edited: bool,
     /// Reactions on this message, pre-aggregated per emoji (who + own-flag).
     pub reactions: Vec<ReactionGroup>,
+    /// True when someone OTHER than the signed-in user has read this message
+    /// (their read receipt is on this event or any newer one — the suffix
+    /// fold happens in `map_timeline_items`). Drives the ✓ / ✓✓ ticks on own
+    /// bubbles. Always false on the legacy `/messages` path (receipts are
+    /// EDUs and don't ride that response).
+    pub read_by_other: bool,
     /// Present when this message is a rich reply: the quoted context.
     pub reply_to: Option<ReplyPreview>,
     /// True while this is a *local echo* — a message we sent that the SDK has
@@ -1515,6 +1521,8 @@ pub async fn room_messages(
             image,
             edited,
             reactions: groups,
+            // Receipts are EDUs — they don't ride the /messages response.
+            read_by_other: false,
             reply_to,
             event_id: Some(event_id.to_string()),
             // `room_messages` only ever returns server history (a /messages
@@ -2006,6 +2014,15 @@ async fn timeline_item_to_chatline(
         }
     }
 
+    // Read receipts: the SDK pins each user's receipt to the NEWEST item that
+    // user has read, so per-item presence alone under-reports. Record the raw
+    // per-item fact here; `map_timeline_items` suffix-folds it ("read" = a
+    // receipt from someone else on this item or any newer one).
+    let read_by_other = event
+        .read_receipts()
+        .keys()
+        .any(|u| Some(u.as_ref()) != me.as_deref());
+
     // Rich-reply context: the Timeline resolves the replied-to event's details
     // when it can (the target is in the loaded timeline). When details aren't
     // ready we still mark the message AS a reply with a placeholder preview.
@@ -2059,6 +2076,7 @@ async fn timeline_item_to_chatline(
         event_id: event.event_id().map(|e| e.to_string()),
         edited: message.is_edited(),
         reactions,
+        read_by_other,
         reply_to,
         pending,
         failed,
@@ -2077,6 +2095,14 @@ async fn map_timeline_items(
         if let Some(line) = timeline_item_to_chatline(room, item, &mut name_cache).await {
             lines.push(line);
         }
+    }
+    // Suffix-fold read receipts: a receipt marks the newest event a user has
+    // read, which implies everything OLDER is read too. Lines are
+    // oldest-first, so walk backward carrying "a newer line had a receipt".
+    let mut newer_read = false;
+    for line in lines.iter_mut().rev() {
+        newer_read |= line.read_by_other;
+        line.read_by_other = newer_read;
     }
     lines
 }

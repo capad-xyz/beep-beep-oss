@@ -39,6 +39,14 @@ edited: boolean,
  */
 reactions: Array<ReactionGroup>, 
 /**
+ * True when someone OTHER than the signed-in user has read this message
+ * (their read receipt is on this event or any newer one — the suffix
+ * fold happens in `map_timeline_items`). Drives the ✓ / ✓✓ ticks on own
+ * bubbles. Always false on the legacy `/messages` path (receipts are
+ * EDUs and don't ride that response).
+ */
+read_by_other: boolean, 
+/**
  * Present when this message is a rich reply: the quoted context.
  */
 reply_to: ReplyPreview | null, 

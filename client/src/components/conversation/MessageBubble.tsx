@@ -43,7 +43,14 @@ export function MessageBubble({
       ) : (
         <>
           {formatTime(m.ts)}
-          {own && <Icon name="check" size={11} strokeWidth={2.4} />}
+          {own &&
+            (m.read_by_other ? (
+              <span className="text-oxblood" title="Read">
+                <Icon name="checks" size={12} strokeWidth={2.2} />
+              </span>
+            ) : (
+              <Icon name="check" size={11} strokeWidth={2.4} />
+            ))}
         </>
       )}
     </span>

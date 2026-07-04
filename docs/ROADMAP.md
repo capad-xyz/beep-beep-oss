@@ -262,6 +262,21 @@ interrogate it.
 - **G3 — Secret hygiene** (already automated): full-history gitleaks green in
   CI + manual pass at launch.
 
+## Engineering invariants (never violate)
+
+- **Bridge commands go only to identity-verified rooms.** Never resolve the
+  bridge bot (or any command target) by fuzzy display-name matching or any
+  signal that can change under room-list churn. Resolve by mxid, and
+  HARD-ASSERT the room's active members are a subset of the expected set
+  before sending. Rationale: the 2026-07-04 incident — client-side fuzzy
+  bot-room matching re-fired "login qr" into ~9 rooms including real contacts
+  during a portal-import storm, getting a WhatsApp account banned. See
+  `whatsapp_start_login` in matrix.rs. This class of "the app messaged a real
+  person on its own" bug is release-blocking, always.
+- **A gate for it (add to v1.0 G-set):** after triggering WhatsApp login, DB-
+  assert that every `login qr` (and any bridge command) message lands ONLY in
+  the bot DM, across a fresh-account portal import.
+
 ## Known risks (carry-forward)
 - matrix-sdk 0.x churn (mitigated by bump cadence + CI).
 - WhatsApp ToS / ban risk — personal-use disclaimer for OSS; the real exposure

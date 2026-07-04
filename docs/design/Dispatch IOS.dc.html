@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<meta name="design_doc_mode" content="canvas">
+<style>
+:root{
+  --ground:#f1f0ec; --panel:#f6f5f0; --elevated:#fffefb;
+  --border:#e4e2da; --border-strong:#d4d1c7;
+  --ink:#0b0b0d; --ink-soft:#33322f; --muted:#6f6e6a; --faint:#a2a09a;
+  /* oxblood accent — warm, editorial, distinct from beeper-blue & whatsapp-green */
+  --accent:#8f3b45; --accent-ink:#722d37; --accent-tint:#f2e4e3; --accent-tint-2:#ecd3d2;
+  --danger:#c5432c; --success:#2f8f5b;
+  /* whatsapp-style bubbles on paper wallpaper */
+  --wallpaper:#ece4d8;
+  --bubble-in:#fffefb; --bubble-out:#f3e4e2;
+  --net-whatsapp:#1fab54; --net-signal:#2f6bed; --net-telegram:#219fd6; --net-instagram:#c9367f;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px; --sp-8:32px;
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --r-xl:18px; --r-2xl:26px; --r-full:999px;
+  --font-sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;
+  --font-mono:'Geist Mono',ui-monospace,monospace;
+  --track-micro:0.09em;
+  --sh-1:0 1px 2px rgba(11,11,13,.05);
+  --sh-2:0 4px 14px rgba(11,11,13,.08);
+  --sh-3:0 16px 44px rgba(11,11,13,.16);
+  --bub-sh:0 1px 1px rgba(11,11,13,.07);
+  /* liquid glass removed — solid surfaces */
+  --glass:#f3f2ee;
+  --glass-clear:#fffefb;
+  --glass-hi:#e4e2da;
+  --glass-blur:none;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:#d7d5ce;font-family:var(--font-sans);color:var(--ink);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+::selection{background:var(--accent-tint)}
+</style>
+</helmet>
+
+<div style="padding:72px 80px 130px;display:flex;flex-direction:column;gap:72px;min-width:3400px">
+
+  <!-- masthead -->
+  <div style="display:flex;flex-direction:column;gap:var(--sp-4);max-width:900px">
+    <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:var(--track-micro);text-transform:uppercase;color:var(--muted)">Side prototype · native mobile · whatsapp-grade</div>
+    <div style="display:flex;align-items:center;gap:var(--sp-4)">
+      <div style="width:60px;height:60px;border-radius:16px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:var(--sh-2)">{{ logoMark }}</div>
+      <div>
+        <div style="font-size:40px;font-weight:600;letter-spacing:-0.02em;line-height:1">Dispatch</div>
+        <div style="font-family:var(--font-mono);font-size:12px;letter-spacing:.06em;color:var(--muted);margin-top:4px">every network, one thread · no paywall, no delay</div>
+      </div>
+    </div>
+    <div style="font-size:16px;color:var(--ink-soft);line-height:1.5;max-width:680px">The muscle-memory of WhatsApp on warm paper: textured chat wallpaper, tail bubbles with inline ticks, solid glass chrome. Oxblood accent for anything live or unread — no colored borders, the rest stays mono.</div>
+  </div>
+
+  <!-- ROW 1 — CHATS + CONVERSATION -->
+  <div style="display:flex;gap:var(--sp-8);flex-wrap:wrap;align-items:flex-start">
+
+    <!-- ===== CHATS ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">01 · Chats</div>
+      <div style="{{ frameOuter }}"><div style="{{ frameInner }}">
+        <div style="{{ island }}"></div>
+        <div style="{{ statusBar }}"><span style="font-weight:600;font-size:15px;letter-spacing:.02em">9:41</span><span style="display:flex;gap:6px;align-items:center;color:var(--ink)">{{ icoCellular }}{{ icoWifi }}{{ icoBattery }}</span></div>
+        <div style="padding:6px var(--sp-5) var(--sp-3);display:flex;flex-direction:column;gap:var(--sp-3)">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:30px;font-weight:700;letter-spacing:-0.02em">Chats</div>
+            <div style="display:flex;gap:var(--sp-2);align-items:center">
+              <div style="width:38px;height:38px;border-radius:var(--r-full);background:var(--elevated);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--accent);box-shadow:var(--sh-1)">{{ icoCompose }}</div>
+              <div style="width:38px;height:38px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:14px;background:#7b61a8">CP</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:var(--sp-2);background:var(--elevated);border:1px solid var(--border);border-radius:var(--r-full);padding:11px 15px;box-shadow:var(--sh-1)"><span style="color:var(--faint);display:flex">{{ icoSearch }}</span><span style="font-size:15px;color:var(--faint)">Search</span></div>
+          <div style="display:flex;gap:var(--sp-2)">
+            <div style="{{ chipOn }}">All</div>
+            <div style="{{ chipOff }}">Unread <span style="color:var(--accent);margin-left:4px">4</span></div>
+            <div style="{{ chipOff }}">Groups</div>
+          </div>
+        </div>
+        <!-- list with dividers -->
+        <div style="flex:1;overflow:hidden;padding-bottom:110px">
+          <sc-for list="{{ conversations }}" as="c" hint-placeholder-count="7">
+            <div style="display:flex;gap:var(--sp-3);padding:11px var(--sp-5);align-items:center;background:{{ c.rowBg }}">
+              <div style="position:relative;flex:none">
+                <div style="width:52px;height:52px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:16px;color:#fff;background:{{ c.avatarBg }}">{{ c.initials }}</div>
+                <div style="{{ c.dot }}"></div>
+              </div>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;border-bottom:1px solid var(--border);padding-bottom:11px;margin-top:11px;margin-bottom:-11px">
+                <div style="display:flex;align-items:center;gap:var(--sp-2)">
+                  <span style="font-size:16px;font-weight:{{ c.nameWeight }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1">{{ c.name }}</span>
+                  <span style="font-family:var(--font-mono);font-size:11px;color:{{ c.timeColor }}">{{ c.time }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:var(--sp-2)">
+                  <span style="display:flex;color:var(--faint);flex:none">{{ c.tick }}</span>
+                  <span style="font-size:14px;color:{{ c.previewColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;font-weight:{{ c.previewWeight }}">{{ c.preview }}</span>
+                  <sc-if value="{{ c.unread }}" hint-placeholder-val="{{ true }}"><span style="flex:none;min-width:20px;height:20px;padding:0 6px;border-radius:var(--r-full);background:var(--accent);color:#fff;font-family:var(--font-mono);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center">{{ c.unread }}</span></sc-if>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="{{ tabBar }}">
+          <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:{{ t.color }}"><span style="display:flex">{{ t.icon }}</span><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:.04em;text-transform:uppercase">{{ t.label }}</span></div></sc-for>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">WHATSAPP ·</span> hairline dividers, sent-tick on your own previews, floating tab bar. Root pane.</div>
+    </div>
+
+    <!-- ===== CONVERSATION ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">02 · Conversation</div>
+      <div style="{{ frameOuter }}"><div style="{{ frameWall }}">
+        <div style="{{ island }}"></div>
+        <div style="{{ convHeader }}">
+          <div style="height:54px"></div>
+          <div style="height:56px;display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-4)">
+            <div style="width:26px;display:flex;align-items:center;color:var(--accent)">{{ icoBack }}</div>
+            <div style="position:relative;flex:none"><div style="width:40px;height:40px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;color:#fff;background:#7b61a8">MO</div></div>
+            <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:600">Maya Okonkwo</div><div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--net-whatsapp)">WhatsApp · online</div></div>
+            <div style="display:flex;gap:var(--sp-4);color:var(--accent)">{{ icoVideo }}{{ icoPhone }}</div>
+          </div>
+        </div>
+        <div style="flex:1;overflow:hidden;padding:126px var(--sp-4) 96px;display:flex;flex-direction:column;gap:3px">
+          <div style="{{ dayPill }}">Today</div>
+          <div style="align-self:flex-start;max-width:80%;display:flex;flex-direction:column;gap:2px">
+            <div style="{{ inBub }}border-top-left-radius:var(--r-sm)"><span>Are we still on for dinner tonight?</span>{{ metaIn632 }}</div>
+            <div style="{{ inBub }}border-top-left-radius:var(--r-lg)"><span>I made a reservation just in case</span>{{ metaIn633 }}</div>
+          </div>
+          <div style="align-self:flex-end;max-width:82%;margin-top:6px">
+            <div style="{{ outBub }}border-top-right-radius:var(--r-sm)">
+              <!-- neutral reply quote — no colored border -->
+              <div style="background:rgba(11,11,13,.05);border-radius:var(--r-sm);padding:6px 10px;margin-bottom:5px"><div style="font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:1px">Maya</div><div style="font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">I made a reservation just in case</div></div>
+              <span>Perfect, thank you — what time?</span>{{ metaOut640 }}
+            </div>
+          </div>
+          <div style="align-self:flex-start;max-width:80%;margin-top:6px">
+            <div style="position:relative;{{ inBub }}border-top-left-radius:var(--r-sm)"><span>7 PM at Café Loup — booked under my name</span>{{ metaIn641 }}<div style="position:absolute;right:12px;bottom:-13px;display:flex;align-items:center;gap:4px;background:var(--elevated);border:1px solid var(--border);border-radius:var(--r-full);padding:2px 8px 2px 6px;box-shadow:var(--sh-1)"><span style="font-size:12px">👍</span><span style="font-family:var(--font-mono);font-size:10px;color:var(--muted)">1</span></div></div>
+          </div>
+          <div style="align-self:flex-end;max-width:82%;margin-top:12px">
+            <div style="{{ outBub }}border-top-right-radius:var(--r-sm)"><span>Sounds good, see you at 7</span>{{ metaOut642 }}</div>
+          </div>
+        </div>
+        <div style="{{ composer }}">
+          <div style="width:40px;height:40px;flex:none;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;color:var(--accent);background:var(--elevated);border:1px solid var(--border)">{{ icoPlus }}</div>
+          <div style="flex:1;background:var(--elevated);border:1px solid var(--border-strong);border-radius:var(--r-full);padding:11px 16px;font-size:15px;color:var(--faint);display:flex;align-items:center;justify-content:space-between">Message…<span style="display:flex;color:var(--faint)">{{ icoSticker }}</span></div>
+          <div style="width:42px;height:42px;flex:none;border-radius:var(--r-full);background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:var(--sh-2)">{{ icoMic }}</div>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">WHATSAPP ·</span> textured wallpaper, tail bubbles, inline time + ticks, tinted outgoing. Reply quote is neutral — no colored bar.</div>
+    </div>
+
+    <!-- ===== GROUP CHAT ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">03 · Group chat</div>
+      <div style="{{ frameOuter }}"><div style="{{ frameWall }}">
+        <div style="{{ island }}"></div>
+        <div style="{{ convHeader }}">
+          <div style="height:54px"></div>
+          <div style="height:56px;display:flex;align-items:center;gap:var(--sp-2);padding:0 var(--sp-4)">
+            <div style="width:26px;display:flex;align-items:center;color:var(--accent)">{{ icoBack }}</div>
+            <div style="width:40px;height:40px;flex:none;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;color:#fff;background:#b06b3a">{{ icoUsers }}</div>
+            <div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:600">Design Guild</div><div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--net-telegram)">Telegram · 6 members</div></div>
+            <div style="display:flex;gap:var(--sp-4);color:var(--accent)">{{ icoVideo }}{{ icoPhone }}</div>
+          </div>
+        </div>
+        <div style="flex:1;overflow:hidden;padding:126px var(--sp-4) 96px;display:flex;flex-direction:column;gap:3px">
+          <div style="{{ dayPill }}">Today</div>
+          <div style="align-self:center;font-family:var(--font-mono);font-size:10px;letter-spacing:.05em;color:var(--muted);background:rgba(255,255,255,.7);padding:4px 12px;border-radius:var(--r-full);margin-bottom:4px">Priya added Kenji</div>
+          <sc-for list="{{ groupMsgs }}" as="g" hint-placeholder-count="4">
+            <div style="align-self:flex-start;max-width:80%;display:flex;gap:8px;margin-top:6px">
+              <div style="width:30px;height:30px;flex:none;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;color:#fff;background:{{ g.avatarBg }};align-self:flex-end">{{ g.initials }}</div>
+              <div style="{{ inBub }}border-top-left-radius:var(--r-sm)"><div style="font-size:12px;font-weight:700;color:{{ g.nameColor }};margin-bottom:2px">{{ g.name }}</div><span>{{ g.text }}</span>{{ g.meta }}</div>
+            </div>
+          </sc-for>
+          <div style="align-self:flex-end;max-width:82%;margin-top:12px">
+            <div style="{{ outBub }}border-top-right-radius:var(--r-sm)"><span>On it — pushing the token file now</span>{{ metaOut642 }}</div>
+          </div>
+        </div>
+        <div style="{{ composer }}">
+          <div style="width:40px;height:40px;flex:none;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;color:var(--accent);background:var(--elevated);border:1px solid var(--border)">{{ icoPlus }}</div>
+          <div style="flex:1;background:var(--elevated);border:1px solid var(--border-strong);border-radius:var(--r-full);padding:11px 16px;font-size:15px;color:var(--faint);display:flex;align-items:center;justify-content:space-between">Message…<span style="display:flex;color:var(--faint)">{{ icoSticker }}</span></div>
+          <div style="width:42px;height:42px;flex:none;border-radius:var(--r-full);background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:var(--sh-2)">{{ icoMic }}</div>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">MODULE ·</span> colored sender names, avatars per row, system events centered. Same bubble system.</div>
+    </div>
+
+    <!-- ===== CALLS ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">04 · Calls</div>
+      <div style="{{ frameOuter }}"><div style="{{ frameInner }}">
+        <div style="{{ island }}"></div>
+        <div style="{{ statusBar }}"><span style="font-weight:600;font-size:15px">9:41</span><span style="display:flex;gap:6px;align-items:center;color:var(--ink)">{{ icoCellular }}{{ icoWifi }}{{ icoBattery }}</span></div>
+        <div style="padding:6px var(--sp-5) var(--sp-3);display:flex;align-items:center;justify-content:space-between"><div style="font-size:30px;font-weight:700;letter-spacing:-0.02em">Calls</div><div style="width:38px;height:38px;border-radius:var(--r-full);background:var(--elevated);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;color:var(--accent);box-shadow:var(--sh-1)">{{ icoPhonePlus }}</div></div>
+        <div style="padding:0 var(--sp-5) var(--sp-3)"><div style="display:flex;align-items:center;gap:var(--sp-2);padding:12px var(--sp-4);background:var(--panel);border:1px solid var(--border);border-radius:var(--r-lg)"><div style="width:40px;height:40px;border-radius:var(--r-full);background:var(--accent-tint);display:flex;align-items:center;justify-content:center;color:var(--accent)">{{ icoLink }}</div><div style="flex:1"><div style="font-size:15px;font-weight:600;color:var(--accent)">Create call link</div><div style="font-size:12px;color:var(--muted)">Share a link for a Dispatch call</div></div></div></div>
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:var(--track-micro);text-transform:uppercase;color:var(--muted);padding:4px var(--sp-5) 8px">Recent</div>
+        <div style="flex:1;overflow:hidden">
+          <sc-for list="{{ calls }}" as="c" hint-placeholder-count="6">
+            <div style="display:flex;gap:var(--sp-3);padding:10px var(--sp-5);align-items:center">
+              <div style="width:46px;height:46px;flex:none;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;color:#fff;background:{{ c.avatarBg }}">{{ c.initials }}</div>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;border-bottom:1px solid var(--border);padding-bottom:10px;margin:10px 0 -10px">
+                <span style="font-size:16px;font-weight:500;color:{{ c.nameColor }}">{{ c.name }}</span>
+                <div style="display:flex;align-items:center;gap:5px"><span style="display:flex;color:{{ c.arrowColor }}">{{ c.arrow }}</span><span style="font-size:13px;color:var(--muted)">{{ c.detail }}</span></div>
+              </div>
+              <span style="display:flex;color:var(--accent)">{{ c.typeIcon }}</span>
+            </div>
+          </sc-for>
+        </div>
+        <div style="{{ tabBar }}">
+          <sc-for list="{{ tabsCalls }}" as="t" hint-placeholder-count="4"><div style="display:flex;flex-direction:column;align-items:center;gap:3px;color:{{ t.color }}"><span style="display:flex">{{ t.icon }}</span><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:.04em;text-transform:uppercase">{{ t.label }}</span></div></sc-for>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">MODULE ·</span> incoming / outgoing / missed arrows, missed in danger red, create-call-link banner.</div>
+    </div>
+  </div>
+
+  <!-- ROW 2 — SELECTORS -->
+  <div style="display:flex;gap:var(--sp-8);flex-wrap:wrap;align-items:flex-start">
+
+    <!-- ===== REACTION + CONTEXT MENU ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">05 · Long-press — react &amp; menu</div>
+      <div style="{{ frameOuter }}"><div style="{{ frameWall }}">
+        <div style="{{ island }}"></div>
+        <div style="position:absolute;inset:0;padding:120px var(--sp-4) 0;filter:blur(1.5px);opacity:.9"><div style="align-self:flex-start;max-width:80%;{{ inBub }}border-top-left-radius:var(--r-sm);margin-bottom:8px"><span>Are we still on for dinner tonight?</span></div></div>
+        <div style="position:absolute;inset:0;background:rgba(11,11,13,.36);backdrop-filter:blur(2px)"></div>
+        <div style="position:absolute;left:var(--sp-4);top:190px;right:var(--sp-4);display:flex;flex-direction:column;gap:var(--sp-3)">
+          <div style="align-self:flex-start;display:flex;align-items:center;gap:2px;background:var(--glass-clear);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-hi);border-radius:var(--r-full);padding:7px 8px;box-shadow:var(--sh-3),inset 0 1px 0 var(--glass-hi)">
+            <sc-for list="{{ reactions }}" as="r" hint-placeholder-count="6"><div style="width:38px;height:38px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;font-size:22px">{{ r.emoji }}</div></sc-for>
+            <div style="width:38px;height:38px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;color:var(--muted);background:rgba(11,11,13,.05)">{{ icoPlus }}</div>
+          </div>
+          <div style="align-self:flex-start;max-width:82%;background:var(--bubble-in);border-radius:var(--r-lg);border-top-left-radius:var(--r-sm);padding:9px 12px;font-size:15px;color:var(--ink);box-shadow:var(--sh-3)">I made a reservation just in case</div>
+          <div style="align-self:flex-start;width:224px;background:var(--glass-clear);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-hi);border-radius:var(--r-lg);overflow:hidden;box-shadow:var(--sh-3),inset 0 1px 0 var(--glass-hi)">
+            <sc-for list="{{ contextMenu }}" as="m" hint-placeholder-count="5"><div style="display:flex;align-items:center;justify-content:space-between;padding:12px 15px;border-bottom:1px solid rgba(11,11,13,.06);color:{{ m.color }};font-size:15px;font-weight:500">{{ m.label }}<span style="display:flex;color:{{ m.color }}">{{ m.icon }}</span></div></sc-for>
+          </div>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">SELECTOR ·</span> reaction row + action menu on solid surfaces; message lifts, background dims.</div>
+    </div>
+
+    <!-- ===== ATTACHMENT SHEET ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">06 · Attachment sheet</div>
+      <div style="{{ frameOuter }}"><div style="{{ frameWall }}">
+        <div style="{{ island }}"></div>
+        <div style="position:absolute;inset:0;padding:120px var(--sp-4) 0;opacity:.5"><div style="align-self:flex-start;max-width:80%;{{ inBub }}border-top-left-radius:var(--r-sm)"><span>7 PM at Café Loup</span></div></div>
+        <div style="position:absolute;inset:0;background:rgba(11,11,13,.32)"></div>
+        <div style="position:absolute;left:8px;right:8px;bottom:8px;border-radius:30px;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-hi);box-shadow:var(--sh-3),inset 0 1px 0 var(--glass-hi);padding:var(--sp-3) var(--sp-5) 26px">
+          <div style="width:38px;height:5px;border-radius:var(--r-full);background:rgba(11,11,13,.18);margin:2px auto var(--sp-4)"></div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-4) var(--sp-3)">
+            <sc-for list="{{ attachments }}" as="a" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="width:60px;height:60px;border-radius:20px;display:flex;align-items:center;justify-content:center;color:#fff;background:{{ a.bg }};box-shadow:var(--sh-1)">{{ a.icon }}</div><span style="font-size:12px;color:var(--ink-soft);font-weight:500">{{ a.label }}</span></div></sc-for>
+          </div>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">SELECTOR ·</span> ＋ in composer raises this sheet; grip to dismiss.</div>
+    </div>
+
+    <!-- ===== NEW CHAT / NETWORK PICKER ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">07 · New chat — network picker</div>
+      <div style="{{ frameOuter }}"><div style="{{ frameInner }}">
+        <div style="{{ island }}"></div>
+        <div style="{{ statusBar }}"><span style="font-weight:600;font-size:15px">9:41</span><span style="display:flex;gap:6px;align-items:center;color:var(--ink)">{{ icoCellular }}{{ icoWifi }}{{ icoBattery }}</span></div>
+        <div style="padding:2px var(--sp-4) var(--sp-3);display:flex;align-items:center;justify-content:space-between"><span style="font-size:15px;color:var(--accent);font-weight:500">Cancel</span><span style="font-size:16px;font-weight:600">New chat</span><span style="width:48px"></span></div>
+        <div style="padding:0 var(--sp-4) var(--sp-3)"><div style="display:flex;align-items:center;gap:var(--sp-2);background:var(--elevated);border:1px solid var(--border);border-radius:var(--r-full);padding:11px 15px;box-shadow:var(--sh-1)"><span style="color:var(--faint);display:flex">{{ icoSearch }}</span><span style="font-size:15px;color:var(--faint)">Search name or number</span></div></div>
+        <div style="padding:0 var(--sp-4) var(--sp-4);display:flex;gap:var(--sp-2);overflow:hidden">
+          <div style="{{ chipOn }}display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:var(--r-full);background:#fff"></span>All</div>
+          <sc-for list="{{ netChips }}" as="n" hint-placeholder-count="3"><div style="{{ chipOff }}display:flex;align-items:center;gap:6px"><span style="width:7px;height:7px;border-radius:var(--r-full);background:{{ n.color }}"></span>{{ n.label }}</div></sc-for>
+        </div>
+        <div style="padding:0 var(--sp-4) var(--sp-2);display:flex;flex-direction:column;gap:2px">
+          <div style="display:flex;align-items:center;gap:var(--sp-3);padding:10px var(--sp-2)"><div style="width:46px;height:46px;border-radius:var(--r-full);background:var(--accent-tint);display:flex;align-items:center;justify-content:center;color:var(--accent)">{{ icoUsers }}</div><span style="font-size:15px;font-weight:600;color:var(--accent)">New group</span></div>
+        </div>
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:var(--track-micro);text-transform:uppercase;color:var(--muted);padding:6px var(--sp-5) 8px">Frequently messaged</div>
+        <div style="flex:1;overflow:hidden">
+          <sc-for list="{{ newChatPeople }}" as="p" hint-placeholder-count="5"><div style="display:flex;align-items:center;gap:var(--sp-3);padding:9px var(--sp-5)">
+            <div style="width:46px;height:46px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;color:#fff;background:{{ p.avatarBg }}">{{ p.initials }}</div>
+            <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</div><div style="font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.sub }}</div></div>
+            <div style="font-family:var(--font-mono);font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:{{ p.netColor }};border:1px solid var(--border);padding:4px 8px;border-radius:var(--r-full)">{{ p.netLabel }}</div>
+          </div></sc-for>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">SELECTOR ·</span> pick which account a new chat opens on. Per-row network tag, no colored border.</div>
+    </div>
+
+    <!-- ===== SETTINGS ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">08 · Settings — accounts &amp; theme</div>
+      <div style="{{ frameOuter }}"><div style="{{ frameInner }}">
+        <div style="{{ island }}"></div>
+        <div style="{{ statusBar }}"><span style="font-weight:600;font-size:15px">9:41</span><span style="display:flex;gap:6px;align-items:center;color:var(--ink)">{{ icoCellular }}{{ icoWifi }}{{ icoBattery }}</span></div>
+        <div style="flex:1;overflow:hidden;padding:0 var(--sp-4) 20px;display:flex;flex-direction:column;gap:var(--sp-5)">
+          <div style="font-size:30px;font-weight:700;letter-spacing:-0.02em;padding:2px 4px 0">Settings</div>
+          <div style="display:flex;align-items:center;gap:var(--sp-3);background:var(--panel);border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--sp-4)">
+            <div style="width:56px;height:56px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:18px;color:#fff;background:#7b61a8">CP</div>
+            <div style="flex:1;min-width:0"><div style="font-size:17px;font-weight:600">Cadence Padmore</div><div style="font-size:13px;color:var(--muted)">Available · self-hosted</div></div>
+            <span style="color:var(--faint);display:flex">{{ icoQr }}</span>
+          </div>
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:var(--track-micro);text-transform:uppercase;color:var(--muted);padding:0 4px 8px">Connected accounts</div>
+            <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden">
+              <sc-for list="{{ accounts }}" as="a" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:var(--sp-3);padding:12px var(--sp-4);border-bottom:1px solid var(--border)">
+                <div style="width:38px;height:38px;flex:none;border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;color:#fff;font-family:var(--font-mono);font-size:11px;font-weight:600;background:{{ a.netColor }}">{{ a.netAbbr }}</div>
+                <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:500">{{ a.network }}</div><div style="font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.handle }}</div></div>
+                <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:{{ a.stateColor }};display:flex;align-items:center;gap:5px"><span style="width:6px;height:6px;border-radius:var(--r-full);background:{{ a.stateColor }}"></span>{{ a.state }}</div>
+              </div></sc-for>
+              <div style="display:flex;align-items:center;gap:var(--sp-2);padding:12px var(--sp-4);color:var(--accent);font-size:15px;font-weight:500">{{ icoPlus }} Add account</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:var(--track-micro);text-transform:uppercase;color:var(--muted);padding:0 4px 8px">Appearance</div>
+            <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--r-lg);padding:12px var(--sp-4);display:flex;align-items:center;gap:var(--sp-3)">
+              <span style="font-size:15px;flex:1">Theme</span>
+              <div style="display:flex;background:var(--elevated);border:1px solid var(--border);border-radius:var(--r-full);padding:3px">
+                <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:6px 13px;border-radius:var(--r-full);background:var(--ink);color:#fff">Light</span>
+                <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:6px 13px;border-radius:var(--r-full);color:var(--muted)">Dark</span>
+                <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;padding:6px 13px;border-radius:var(--r-full);color:var(--muted)">Auto</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">SELECTOR ·</span> account states + segmented theme control. iOS grouped-list inset cards.</div>
+    </div>
+  </div>
+
+  <!-- ROW 3 — CONTACT INFO + CALL SCREEN -->
+  <div style="display:flex;gap:var(--sp-8);flex-wrap:wrap;align-items:flex-start">
+
+    <!-- ===== CONTACT / CHAT INFO ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">09 · Contact info</div>
+      <div style="{{ frameOuter }}"><div style="{{ frameInner }}">
+        <div style="{{ island }}"></div>
+        <div style="position:absolute;top:0;left:0;right:0;z-index:5;height:100px;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border-bottom:1px solid var(--border);display:flex;align-items:flex-end;padding:0 var(--sp-4) 12px;gap:var(--sp-2)"><span style="display:flex;color:var(--accent)">{{ icoBack }}</span><span style="font-size:16px;font-weight:600;flex:1">Contact info</span><span style="font-size:15px;color:var(--accent);font-weight:500">Edit</span></div>
+        <div style="flex:1;overflow:hidden;padding-top:100px">
+          <!-- hero -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:var(--sp-5) var(--sp-4)">
+            <div style="width:96px;height:96px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:34px;color:#fff;background:#7b61a8;box-shadow:var(--sh-2)">MO</div>
+            <div style="font-size:22px;font-weight:600;margin-top:6px">Maya Okonkwo</div>
+            <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--net-whatsapp)">WhatsApp · +1 (415) 555-0148</div>
+          </div>
+          <!-- action buttons -->
+          <div style="display:flex;justify-content:center;gap:var(--sp-3);padding:0 var(--sp-5) var(--sp-5)">
+            <sc-for list="{{ contactActions }}" as="a" hint-placeholder-count="4"><div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 0;background:var(--panel);border:1px solid var(--border);border-radius:var(--r-lg);color:var(--accent)">{{ a.icon }}<span style="font-family:var(--font-mono);font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft)">{{ a.label }}</span></div></sc-for>
+          </div>
+          <!-- info rows -->
+          <div style="padding:0 var(--sp-4)">
+            <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--r-lg);padding:14px var(--sp-4);margin-bottom:var(--sp-4)"><div style="font-size:15px;color:var(--ink);line-height:1.4">Product designer. Café enthusiast. Usually replies fast.</div></div>
+            <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--r-lg);overflow:hidden">
+              <sc-for list="{{ infoRows }}" as="r" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:var(--sp-3);padding:13px var(--sp-4);border-bottom:1px solid var(--border)"><span style="display:flex;color:var(--muted)">{{ r.icon }}</span><span style="flex:1;font-size:15px;color:{{ r.color }}">{{ r.label }}</span><span style="font-family:var(--font-mono);font-size:12px;color:var(--muted)">{{ r.value }}</span></div></sc-for>
+            </div>
+          </div>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">MODULE ·</span> hero avatar, quick actions, media/mute/block rows. Opens from the conversation header.</div>
+    </div>
+
+    <!-- ===== VOICE CALL SCREEN ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">10 · Voice call</div>
+      <div style="{{ frameOuter }}"><div style="width:100%;height:100%;border-radius:44px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:linear-gradient(180deg,#2a1418 0%,#3a1c22 40%,#4a2830 100%)">
+        <div style="{{ island }}"></div>
+        <div style="height:54px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 8px;color:rgba(255,255,255,.9)"><span style="font-weight:600;font-size:15px">9:41</span><span style="display:flex;gap:6px;align-items:center">{{ icoCellularW }}{{ icoWifiW }}{{ icoBatteryW }}</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding-top:56px">
+          <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:6px">{{ icoLock }} End-to-end encrypted</div>
+          <div style="width:120px;height:120px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:42px;color:#fff;background:#7b61a8;margin:var(--sp-6) 0 var(--sp-5);box-shadow:0 0 0 6px rgba(255,255,255,.08)">MO</div>
+          <div style="font-size:26px;font-weight:600;color:#fff">Maya Okonkwo</div>
+          <div style="font-family:var(--font-mono);font-size:13px;color:rgba(255,255,255,.6);margin-top:6px;letter-spacing:.03em">04:12 · WhatsApp</div>
+        </div>
+        <!-- glass control dock -->
+        <div style="margin:0 14px 40px;border-radius:32px;background:rgba(255,255,255,.1);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid rgba(255,255,255,.16);padding:var(--sp-5);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--sp-5) var(--sp-4);margin-bottom:var(--sp-5)">
+            <sc-for list="{{ callControls }}" as="c" hint-placeholder-count="6"><div style="display:flex;flex-direction:column;align-items:center;gap:8px"><div style="width:60px;height:60px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;color:#fff;background:{{ c.bg }};border:1px solid rgba(255,255,255,.14)">{{ c.icon }}</div><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:.04em;text-transform:uppercase;color:rgba(255,255,255,.65)">{{ c.label }}</span></div></sc-for>
+          </div>
+          <div style="display:flex;justify-content:center"><div style="width:72px;height:72px;border-radius:var(--r-full);background:var(--danger);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 8px 24px rgba(197,67,44,.5)">{{ icoEndCall }}</div></div>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">MODULE ·</span> warm dark call surface, encrypted label, control dock, red end button. Network shown under the timer.</div>
+    </div>
+
+    <!-- ===== INCOMING CALL ===== -->
+    <div style="display:flex;flex-direction:column;gap:var(--sp-4)">
+      <div style="{{ tag }}">11 · Incoming call</div>
+      <div style="{{ frameOuter }}"><div style="width:100%;height:100%;border-radius:44px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:linear-gradient(180deg,#1a1418 0%,#241a20 100%)">
+        <div style="{{ island }}"></div>
+        <div style="height:54px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 8px;color:rgba(255,255,255,.9)"><span style="font-weight:600;font-size:15px">9:41</span><span style="display:flex;gap:6px;align-items:center">{{ icoCellularW }}{{ icoWifiW }}{{ icoBatteryW }}</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding-top:80px">
+          <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.55)">Dispatch · incoming</div>
+          <div style="width:110px;height:110px;border-radius:var(--r-full);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:40px;color:#fff;background:#3f7d6b;margin:var(--sp-6) 0 var(--sp-4)">D</div>
+          <div style="font-size:26px;font-weight:600;color:#fff">Dad</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:8px"><span style="width:8px;height:8px;border-radius:var(--r-full);background:var(--net-signal)"></span><span style="font-family:var(--font-mono);font-size:12px;color:rgba(255,255,255,.6);letter-spacing:.04em">Signal voice call</span></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:0 60px 60px;align-items:flex-end">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px"><div style="width:72px;height:72px;border-radius:var(--r-full);background:var(--danger);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 8px 24px rgba(197,67,44,.5)">{{ icoEndCall }}</div><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.6)">Decline</span></div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:10px"><div style="width:72px;height:72px;border-radius:var(--r-full);background:var(--success);display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 8px 24px rgba(47,143,91,.5)">{{ icoPhone }}</div><span style="font-family:var(--font-mono);font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.6)">Accept</span></div>
+        </div>
+      </div></div>
+      <div style="{{ cap }}"><span style="color:var(--ink)">MODULE ·</span> lock-screen incoming: network dot under the name, decline / accept. Any network rings through one UI.</div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const meta = (time, ticks) => React.createElement('span', { style:{ fontFamily:'var(--font-mono)', fontSize:'10px', color: ticks?'var(--faint)':'var(--faint)', whiteSpace:'nowrap', alignSelf:'flex-end', marginBottom:'1px', marginLeft:'2px', display:'inline-flex', alignItems:'center', gap:'3px' } }, time, ticks ? this.i('check') : null);
+
+    const conversations = [
+      { name:'Maya Okonkwo', initials:'MO', avatarBg:'#7b61a8', net:'whatsapp', preview:'Sounds good, see you at 7', time:'now', unread:0, mine:true },
+      { name:'Dad', initials:'D', avatarBg:'#3f7d6b', net:'signal', preview:'Did you call the plumber?', time:'14m', unread:1, mine:false },
+      { name:'Design Guild', initials:'DG', avatarBg:'#b06b3a', net:'telegram', preview:'Priya: pushed the new tokens', time:'1h', unread:12, mine:false },
+      { name:'Kenji Tanaka', initials:'KT', avatarBg:'#4a6ea8', net:'whatsapp', preview:'The files are on the drive', time:'3h', unread:0, mine:true },
+      { name:'Mom', initials:'M', avatarBg:'#a8557a', net:'whatsapp', preview:'Call me when you\u2019re free', time:'yest', unread:2, mine:false },
+      { name:'Reya Patel', initials:'RP', avatarBg:'#5a7d4a', net:'signal', preview:'haha yeah exactly', time:'yest', unread:0, mine:false },
+      { name:'Sam Rivera', initials:'SR', avatarBg:'#6b6b73', net:'instagram', preview:'loved the shots you sent', time:'Mon', unread:0, mine:false },
+    ].map(c => ({
+      ...c,
+      rowBg:'transparent',
+      dot:`position:absolute;right:-1px;bottom:-1px;width:16px;height:16px;border-radius:var(--r-full);background:var(--net-${c.net})`,
+      nameWeight: c.unread ? 700 : 500,
+      previewWeight: c.unread ? 500 : 400,
+      previewColor: c.unread ? 'var(--ink-soft)' : 'var(--muted)',
+      timeColor: c.unread ? 'var(--accent)' : 'var(--faint)',
+      tick: c.mine ? this.i('check') : null,
+    }));
+
+    const tab = (label, icon, on) => ({ label, icon: this.i(icon), color: on ? 'var(--accent)' : 'var(--muted)' });
+    const tabs = [ tab('Chats','chat',true), tab('Calls','phone',false), tab('Groups','users',false), tab('Settings','gear',false) ];
+    const tabsCalls = [ tab('Chats','chat',false), tab('Calls','phone',true), tab('Groups','users',false), tab('Settings','gear',false) ];
+
+    const groupMsgs = [
+      { name:'Priya Nair', initials:'PN', avatarBg:'#b06b3a', nameColor:'#a1552a', text:'Pushed the new token file to main', meta: meta('6:20') },
+      { name:'Kenji Tanaka', initials:'KT', avatarBg:'#4a6ea8', nameColor:'#3a5c94', text:'Nice — the oxblood reads so much better', meta: meta('6:24') },
+      { name:'Priya Nair', initials:'PN', avatarBg:'#b06b3a', nameColor:'#a1552a', text:'Can someone verify the mobile spacing?', meta: meta('6:31') },
+    ];
+
+    const calls = [
+      { name:'Maya Okonkwo', initials:'MO', avatarBg:'#7b61a8', dir:'out', detail:'Yesterday, 8:14 PM', type:'video' },
+      { name:'Dad', initials:'D', avatarBg:'#3f7d6b', dir:'missed', detail:'Yesterday, 6:02 PM', type:'phone' },
+      { name:'Reya Patel', initials:'RP', avatarBg:'#5a7d4a', dir:'in', detail:'Mon, 11:20 AM', type:'phone' },
+      { name:'Design Guild', initials:'DG', avatarBg:'#b06b3a', dir:'out', detail:'Mon, 9:40 AM · 4 people', type:'video' },
+      { name:'Mom', initials:'M', avatarBg:'#a8557a', dir:'missed', detail:'Sun, 7:50 PM', type:'phone' },
+      { name:'Kenji Tanaka', initials:'KT', avatarBg:'#4a6ea8', dir:'in', detail:'Sat, 3:12 PM', type:'phone' },
+    ].map(c => ({
+      ...c,
+      nameColor: c.dir==='missed' ? 'var(--danger)' : 'var(--ink)',
+      arrow: this.i(c.dir==='missed' ? 'callMissed' : c.dir==='in' ? 'callIn' : 'callOut'),
+      arrowColor: c.dir==='missed' ? 'var(--danger)' : c.dir==='in' ? 'var(--success)' : 'var(--muted)',
+      typeIcon: this.i(c.type==='video' ? 'video' : 'phone'),
+    }));
+
+    const reactions = ['👍','❤️','😂','😮','😢','🙏'].map(emoji=>({emoji}));
+    const contextMenu = [
+      {label:'Reply', icon:this.i('reply'), color:'var(--ink)'},
+      {label:'Copy', icon:this.i('copy'), color:'var(--ink)'},
+      {label:'Forward', icon:this.i('forward'), color:'var(--ink)'},
+      {label:'Star', icon:this.i('star'), color:'var(--ink)'},
+      {label:'Delete', icon:this.i('trash'), color:'var(--danger)'},
+    ];
+    const attachments = [
+      {label:'Photos', icon:this.i('image'), bg:'#3f7d6b'},
+      {label:'Camera', icon:this.i('camera'), bg:'#7b61a8'},
+      {label:'Document', icon:this.i('doc'), bg:'#4a6ea8'},
+      {label:'Location', icon:this.i('pin'), bg:'#8f3b45'},
+      {label:'Contact', icon:this.i('contact'), bg:'#b06b3a'},
+      {label:'Poll', icon:this.i('poll'), bg:'#5a7d4a'},
+    ];
+    const netChips = [
+      {label:'WhatsApp', color:'var(--net-whatsapp)'},
+      {label:'Signal', color:'var(--net-signal)'},
+      {label:'Telegram', color:'var(--net-telegram)'},
+    ];
+    const newChatPeople = [
+      {name:'Maya Okonkwo', initials:'MO', avatarBg:'#7b61a8', netColor:'var(--net-whatsapp)', netLabel:'WA', sub:'online'},
+      {name:'Reya Patel', initials:'RP', avatarBg:'#5a7d4a', netColor:'var(--net-signal)', netLabel:'SG', sub:'last seen 2m ago'},
+      {name:'Kenji Tanaka', initials:'KT', avatarBg:'#4a6ea8', netColor:'var(--net-whatsapp)', netLabel:'WA', sub:'+81 90 1234 5678'},
+      {name:'Priya Nair', initials:'PN', avatarBg:'#b06b3a', netColor:'var(--net-telegram)', netLabel:'TG', sub:'@priya'},
+      {name:'Sam Rivera', initials:'SR', avatarBg:'#6b6b73', netColor:'var(--net-instagram)', netLabel:'IG', sub:'@sam.rivera'},
+    ];
+    const accounts = [
+      { network:'WhatsApp', netAbbr:'WA', netColor:'var(--net-whatsapp)', handle:'Cadence Padmore · +1 (415) 555\u20130132', state:'Connected', stateColor:'var(--success)' },
+      { network:'Signal', netAbbr:'SG', netColor:'var(--net-signal)', handle:'+1 (415) 555\u20130132', state:'Connected', stateColor:'var(--success)' },
+      { network:'Telegram', netAbbr:'TG', netColor:'var(--net-telegram)', handle:'@capad', state:'Reconnecting', stateColor:'#c98a2a' },
+      { network:'Instagram', netAbbr:'IG', netColor:'var(--net-instagram)', handle:'Not linked', state:'Offline', stateColor:'var(--faint)' },
+    ];
+
+    const contactActions = [
+      {label:'Message', icon:this.i('chat')},
+      {label:'Audio', icon:this.i('phone')},
+      {label:'Video', icon:this.i('video')},
+      {label:'Search', icon:this.i('search')},
+    ];
+    const infoRows = [
+      {icon:this.i('image'), label:'Media, links & docs', color:'var(--ink)', value:'128'},
+      {icon:this.i('star'), label:'Starred messages', color:'var(--ink)', value:'6'},
+      {icon:this.i('bell'), label:'Mute notifications', color:'var(--ink)', value:'Off'},
+      {icon:this.i('block'), label:'Block Maya', color:'var(--danger)', value:''},
+    ];
+
+    const callControls = [
+      {label:'Mute', icon:this.i('mic'), bg:'rgba(255,255,255,.12)'},
+      {label:'Keypad', icon:this.i('keypad'), bg:'rgba(255,255,255,.12)'},
+      {label:'Speaker', icon:this.i('speaker'), bg:'rgba(255,255,255,.22)'},
+      {label:'Add', icon:this.i('addPerson'), bg:'rgba(255,255,255,.12)'},
+      {label:'Video', icon:this.i('video'), bg:'rgba(255,255,255,.12)'},
+      {label:'Hold', icon:this.i('pause'), bg:'rgba(255,255,255,.12)'},
+    ];
+
+    // style fragments
+    const frameOuter = 'width:393px;height:852px;background:#0b0b0d;border-radius:56px;padding:12px;box-shadow:var(--sh-3)';
+    const frameInner = 'width:100%;height:100%;background:var(--ground);border-radius:44px;overflow:hidden;position:relative;display:flex;flex-direction:column;';
+    const frameWall = 'width:100%;height:100%;border-radius:44px;overflow:hidden;position:relative;display:flex;flex-direction:column;background:radial-gradient(circle at 1px 1px, rgba(11,11,13,.04) 1px, transparent 0) 0 0/20px 20px, var(--wallpaper);';
+    const wall = '';
+    const island = 'position:absolute;top:11px;left:50%;transform:translateX(-50%);width:118px;height:34px;border-radius:20px;background:#0b0b0d;z-index:20';
+    const statusBar = 'height:54px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:0 26px 8px;font-family:var(--font-sans)';
+    const chipOn = 'font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;padding:8px 13px;border-radius:var(--r-full);background:var(--ink);color:#fff;white-space:nowrap;';
+    const chipOff = 'font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;padding:8px 13px;border-radius:var(--r-full);background:var(--elevated);color:var(--muted);border:1px solid var(--border);white-space:nowrap;';
+    const inBub = 'background:var(--bubble-in);border-radius:var(--r-lg);padding:7px 10px 7px 11px;font-size:15px;line-height:1.35;color:var(--ink);box-shadow:var(--bub-sh);display:flex;flex-wrap:wrap;align-items:flex-end;gap:2px 6px;';
+    const outBub = 'background:var(--bubble-out);border-radius:var(--r-lg);padding:7px 10px 7px 11px;font-size:15px;line-height:1.35;color:var(--ink);box-shadow:var(--bub-sh);display:flex;flex-wrap:wrap;align-items:flex-end;gap:2px 6px;';
+    const convHeader = 'position:absolute;top:0;left:0;right:0;z-index:5;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border-bottom:1px solid var(--border)';
+    const composer = 'position:absolute;left:0;right:0;bottom:0;z-index:5;padding:var(--sp-3) var(--sp-3) 26px;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border-top:1px solid var(--border);display:flex;align-items:center;gap:var(--sp-2)';
+    const tabBar = 'position:absolute;left:14px;right:14px;bottom:16px;height:66px;border-radius:26px;background:var(--glass);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-hi);box-shadow:var(--sh-3),inset 0 1px 0 var(--glass-hi);display:flex;align-items:center;justify-content:space-around;padding:0 var(--sp-3)';
+    const dayPill = 'align-self:center;font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:rgba(255,255,255,.72);padding:4px 12px;border-radius:var(--r-full);margin-bottom:4px';
+    const tag = 'font-family:var(--font-mono);font-size:11px;letter-spacing:var(--track-micro);text-transform:uppercase;color:var(--muted)';
+    const cap = 'font-family:var(--font-mono);font-size:11px;letter-spacing:.03em;color:var(--muted);width:393px;line-height:1.6';
+
+    return {
+      conversations, tabs, tabsCalls, groupMsgs, calls, reactions, contextMenu, attachments,
+      netChips, newChatPeople, accounts, contactActions, infoRows, callControls,
+      frameOuter, frameInner, frameWall, wall, island, statusBar, chipOn, chipOff, inBub, outBub,
+      convHeader, composer, tabBar, dayPill, tag, cap,
+      metaIn632: meta('6:32'), metaIn633: meta('6:33'), metaIn641: meta('6:41'),
+      metaOut640: meta('6:40', true), metaOut642: meta('6:42', true),
+      logoMark: this.i('chat'),
+      icoSearch:this.i('search'), icoCompose:this.i('compose'), icoBack:this.i('back'),
+      icoVideo:this.i('video'), icoPhone:this.i('phone'), icoPlus:this.i('plus'), icoMic:this.i('mic'),
+      icoQr:this.i('qr'), icoUsers:this.i('users'), icoSticker:this.i('sticker'),
+      icoPhonePlus:this.i('phonePlus'), icoLink:this.i('link'), icoLock:this.i('lock'),
+      icoEndCall:this.i('endCall'),
+      icoCellular:this.i('cellular'), icoWifi:this.i('wifi'), icoBattery:this.i('battery'),
+      icoCellularW:this.i('cellularW'), icoWifiW:this.i('wifiW'), icoBatteryW:this.i('batteryW'),
+    };
+  }
+
+  i(name){
+    const el = React.createElement;
+    const s = { width:20, height:20, viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:1.9, strokeLinecap:'round', strokeLinejoin:'round' };
+    const map = {
+      search: el('svg', s, el('circle',{cx:11,cy:11,r:7}), el('path',{d:'M21 21l-4.3-4.3'})),
+      compose: el('svg', s, el('path',{d:'M12 20h9'}), el('path',{d:'M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z'})),
+      back: el('svg', {...s,width:24,height:24,strokeWidth:2.2}, el('path',{d:'M15 18l-6-6 6-6'})),
+      video: el('svg', s, el('rect',{x:2,y:6,width:13,height:12,rx:2.5}), el('path',{d:'M22 8.5l-5 3.5 5 3.5z'})),
+      phone: el('svg', s, el('path',{d:'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.7a2 2 0 0 1-.5 2.1L8 9.6a16 16 0 0 0 6 6l1.1-1.1a2 2 0 0 1 2.1-.5c.9.3 1.8.5 2.7.6a2 2 0 0 1 1.7 2z'})),
+      phonePlus: el('svg', s, el('path',{d:'M22 10.9V13a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.2 2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.7a2 2 0 0 1-.5 2.1L8 9.6a16 16 0 0 0 6 6l1.1-1.1'}), el('path',{d:'M17 3h5M19.5 0.5v5'})),
+      plus: el('svg', s, el('path',{d:'M12 5v14M5 12h14'})),
+      mic: el('svg', s, el('rect',{x:9,y:2,width:6,height:12,rx:3}), el('path',{d:'M5 11a7 7 0 0 0 14 0M12 18v3'})),
+      check: el('svg', {width:15,height:11,viewBox:'0 0 18 12',fill:'none',stroke:'var(--accent)',strokeWidth:2,strokeLinecap:'round',strokeLinejoin:'round'}, el('path',{d:'M1 7l3.2 3.2L10 3'}), el('path',{d:'M7.5 10.2L8 10.2 13.7 3'})),
+      qr: el('svg', s, el('rect',{x:3,y:3,width:7,height:7,rx:1}), el('rect',{x:14,y:3,width:7,height:7,rx:1}), el('rect',{x:3,y:14,width:7,height:7,rx:1}), el('path',{d:'M14 14h3v3M20 14v0M14 20v0M20 17v4M17 20h4'})),
+      chat: el('svg', s, el('path',{d:'M21 11.5a8.4 8.4 0 0 1-9 8.4 9 9 0 0 1-3.6-.6L3 21l1.4-4.9A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z'})),
+      users: el('svg', s, el('path',{d:'M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2'}), el('circle',{cx:9.5,cy:7,r:4}), el('path',{d:'M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'})),
+      gear: el('svg', s, el('circle',{cx:12,cy:12,r:3}), el('path',{d:'M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-2.7-1.1l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 4.6 15H4.5a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 2.7-1.1V4.5a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-1.1 2.7v.1a2 2 0 1 1 0 4h-.1z'})),
+      reply: el('svg', s, el('path',{d:'M9 17l-6-5 6-5'}), el('path',{d:'M3 12h10a8 8 0 0 1 8 8v0'})),
+      copy: el('svg', s, el('rect',{x:9,y:9,width:12,height:12,rx:2}), el('path',{d:'M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'})),
+      forward: el('svg', s, el('path',{d:'M15 17l6-5-6-5'}), el('path',{d:'M21 12H11a8 8 0 0 0-8 8v0'})),
+      star: el('svg', s, el('path',{d:'M12 2l3 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.9 21l1.2-6.8-5-4.9 6.9-1z'})),
+      trash: el('svg', s, el('path',{d:'M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M6 6l1 14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-14'})),
+      image: el('svg', s, el('rect',{x:3,y:3,width:18,height:18,rx:3}), el('circle',{cx:8.5,cy:8.5,r:1.8}), el('path',{d:'M21 15l-5-5L5 21'})),
+      camera: el('svg', s, el('path',{d:'M3 8a2 2 0 0 1 2-2h1.5l1.2-2h6.6l1.2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'}), el('circle',{cx:12,cy:12.5,r:3.5})),
+      doc: el('svg', s, el('path',{d:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'}), el('path',{d:'M14 2v6h6M8 13h8M8 17h5'})),
+      pin: el('svg', s, el('path',{d:'M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z'}), el('circle',{cx:12,cy:10,r:3})),
+      contact: el('svg', s, el('rect',{x:3,y:4,width:18,height:16,rx:2}), el('circle',{cx:9,cy:10,r:2.4}), el('path',{d:'M5.5 17a3.5 3.5 0 0 1 7 0M15 9h4M15 13h3'})),
+      poll: el('svg', s, el('path',{d:'M7 20V10M12 20V4M17 20v-6'})),
+      sticker: el('svg', s, el('path',{d:'M20 12a8 8 0 1 0-8 8h0l8-8z'}), el('path',{d:'M12 20a8 8 0 0 0 8-8h-5a3 3 0 0 0-3 3z'})),
+      link: el('svg', s, el('path',{d:'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1.5 1.5'}), el('path',{d:'M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1.5-1.5'})),
+      lock: el('svg', {...s,width:13,height:13}, el('rect',{x:3,y:11,width:18,height:11,rx:2}), el('path',{d:'M7 11V7a5 5 0 0 1 10 0v4'})),
+      bell: el('svg', s, el('path',{d:'M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9'}), el('path',{d:'M13.7 21a2 2 0 0 1-3.4 0'})),
+      block: el('svg', s, el('circle',{cx:12,cy:12,r:9}), el('path',{d:'M5.6 5.6l12.8 12.8'})),
+      callIn: el('svg', {...s,width:16,height:16,strokeWidth:2.2}, el('path',{d:'M17 7L7 17'}), el('path',{d:'M8 7h9v9'})),
+      callOut: el('svg', {...s,width:16,height:16,strokeWidth:2.2}, el('path',{d:'M7 17L17 7'}), el('path',{d:'M8 7h9v9'})),
+      callMissed: el('svg', {...s,width:16,height:16,strokeWidth:2.2}, el('path',{d:'M17 7L7 17'}), el('path',{d:'M7 12v5h5'})),
+      speaker: el('svg', s, el('path',{d:'M11 5L6 9H2v6h4l5 4z'}), el('path',{d:'M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14'})),
+      addPerson: el('svg', s, el('path',{d:'M14 20v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'}), el('circle',{cx:7.5,cy:7,r:4}), el('path',{d:'M19 8v6M22 11h-6'})),
+      keypad: el('svg', s, el('circle',{cx:5,cy:5,r:1.3}), el('circle',{cx:12,cy:5,r:1.3}), el('circle',{cx:19,cy:5,r:1.3}), el('circle',{cx:5,cy:12,r:1.3}), el('circle',{cx:12,cy:12,r:1.3}), el('circle',{cx:19,cy:12,r:1.3}), el('circle',{cx:5,cy:19,r:1.3}), el('circle',{cx:12,cy:19,r:1.3}), el('circle',{cx:19,cy:19,r:1.3})),
+      pause: el('svg', s, el('rect',{x:6,y:4,width:4,height:16,rx:1}), el('rect',{x:14,y:4,width:4,height:16,rx:1})),
+      endCall: el('svg', {width:26,height:26,viewBox:'0 0 24 24',fill:'currentColor',stroke:'none'}, el('path',{d:'M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08a.99.99 0 0 1-.29-.7c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-1.82 2.05c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 0 0-2.66-1.85.998.998 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z',transform:'rotate(135 12 12)'})),
+      cellular: el('svg', {width:18,height:12,viewBox:'0 0 18 12',fill:'currentColor',stroke:'none'}, el('rect',{x:0,y:8,width:3,height:4,rx:1}), el('rect',{x:5,y:5,width:3,height:7,rx:1}), el('rect',{x:10,y:2.5,width:3,height:9.5,rx:1}), el('rect',{x:15,y:0,width:3,height:12,rx:1})),
+      wifi: el('svg', {width:17,height:12,viewBox:'0 0 24 18',fill:'none',stroke:'currentColor',strokeWidth:2,strokeLinecap:'round'}, el('path',{d:'M2 6a15 15 0 0 1 20 0'}), el('path',{d:'M5.5 9.5a10 10 0 0 1 13 0'}), el('path',{d:'M9 13a5 5 0 0 1 6 0'}), el('circle',{cx:12,cy:16.5,r:1,fill:'currentColor',stroke:'none'})),
+      battery: el('svg', {width:26,height:13,viewBox:'0 0 26 13',fill:'none'}, el('rect',{x:0.6,y:0.6,width:21,height:11.8,rx:3,stroke:'currentColor',strokeWidth:1.1,opacity:0.4}), el('rect',{x:2.4,y:2.4,width:15,height:8.2,rx:1.6,fill:'currentColor'}), el('path',{d:'M24 4.5v4a2 2 0 0 0 0-4z',fill:'currentColor',opacity:0.5})),
+      cellularW: el('svg', {width:18,height:12,viewBox:'0 0 18 12',fill:'#fff',stroke:'none'}, el('rect',{x:0,y:8,width:3,height:4,rx:1}), el('rect',{x:5,y:5,width:3,height:7,rx:1}), el('rect',{x:10,y:2.5,width:3,height:9.5,rx:1}), el('rect',{x:15,y:0,width:3,height:12,rx:1})),
+      wifiW: el('svg', {width:17,height:12,viewBox:'0 0 24 18',fill:'none',stroke:'#fff',strokeWidth:2,strokeLinecap:'round'}, el('path',{d:'M2 6a15 15 0 0 1 20 0'}), el('path',{d:'M5.5 9.5a10 10 0 0 1 13 0'}), el('path',{d:'M9 13a5 5 0 0 1 6 0'}), el('circle',{cx:12,cy:16.5,r:1,fill:'#fff',stroke:'none'})),
+      batteryW: el('svg', {width:26,height:13,viewBox:'0 0 26 13',fill:'none'}, el('rect',{x:0.6,y:0.6,width:21,height:11.8,rx:3,stroke:'#fff',strokeWidth:1.1,opacity:0.5}), el('rect',{x:2.4,y:2.4,width:15,height:8.2,rx:1.6,fill:'#fff'}), el('path',{d:'M24 4.5v4a2 2 0 0 0 0-4z',fill:'#fff',opacity:0.6})),
+    };
+    return map[name] || null;
+  }
+}
+</script>
+</body>
+</html>

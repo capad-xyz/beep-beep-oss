@@ -59,6 +59,20 @@ All data-layer first (bindings regen), UI is largely already built to receive:
       id)`; per-bridge adapter behind it). NewChatModal gains: Contacts tab
       (synced WA contacts), phone-number entry with resolve+confirm, Matrix
       mxid tab. Fallback plan B: bridge-bot `pm` command.
+      - **Identity rules (LID era)**: ghost mxids are opaque — never parse
+        phone numbers out of them; names come from contact/push-name data;
+        numbers shown only when the bridge discloses them; all number entry
+        flows through `resolve_identifier`. LID↔PN merging is upstream's job
+        (one more reason to stay on current bridge versions).
+      - **Dispatch contact store**: user-assigned contact names live in Matrix
+        account data (per-user, syncs to future devices, network-agnostic),
+        with per-network write-through adapters: Telegram = real server-side
+        add-contact (works now, appears on their phone); WhatsApp = spike
+        whether whatsmeow exposes the new encrypted in-WA contact store
+        (write-back if yes, Dispatch-only name if no — say so in the UI).
+        Display precedence: Dispatch name → address book → push name → id.
+        Phone OS address-book write-back: only possible from mobile; parked
+        with the mobile track.
 
 ### Phase 3 — Daily-driver polish
 - [ ] Taskbar unread badge + tray presence.

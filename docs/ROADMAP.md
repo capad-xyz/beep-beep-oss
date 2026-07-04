@@ -37,11 +37,19 @@ test passes; 6 months is acceptable.
 ## Phases
 
 ### Phase 1 — Foundations
-- [ ] matrix-sdk / matrix-sdk-ui bump 0.18 → latest (migration project; expect
-      SyncService/Timeline API breaks). Retires the `linked_chunk` panic.
-- [ ] CI pipeline: typecheck + frontend build + cargo check/test + gitleaks on
-      every push. Release-build job producing installers as artifacts.
-- [ ] Close out remaining SYNC-HARDENING items invalidated/fixed by the bump.
+- [x] ~~matrix-sdk bump 0.18 → latest~~ **Reality check (2026-07-05): 0.18.0
+      IS the latest published release** — the `linked_chunk` panic fix exists
+      only on unreleased git, and pinning git contradicts the latest-stable
+      policy. Done instead: full `cargo update` within semver (tauri 2.11.5,
+      rustls, quinn, …), bindings verified drift-free. **Watch-item: bump to
+      0.19 in the first bump-week after it ships** — that's when the
+      SyncService/Timeline migration project actually happens. Until then the
+      panic is tolerable: the recovery loop self-heals it (observed live).
+- [x] CI pipeline: gitleaks (full history, container invocation — the GH
+      action needs a license for org repos), tsc + vite build, cargo
+      check/test on windows-latest, ts-rs bindings-drift gate.
+      Follow-up: release-build job producing installers (Phase 5).
+- [ ] Close out remaining SYNC-HARDENING items not blocked on SDK 0.19.
 
 ### Phase 2 — Message parity (WhatsApp table stakes)
 All data-layer first (bindings regen), UI is largely already built to receive:

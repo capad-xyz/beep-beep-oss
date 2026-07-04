@@ -363,6 +363,7 @@ async fn start_sync(
                 use matrix_sdk::notification_settings::RoomNotificationMode;
                 use matrix_sdk::ruma::events::room::message::MessageType;
                 use tauri::Manager;
+                #[cfg(not(windows))]
                 use tauri_plugin_notification::NotificationExt;
 
                 let Some(original) = ev.as_original() else { return };
@@ -432,6 +433,38 @@ async fn start_sync(
                     Ok(dn) => dn.to_string(),
                     Err(_) => "New message".to_string(),
                 };
+
+                // The WhatsApp "Status Broadcast" portal is a firehose of other
+                // people's stories — never toast for it (it stays visible in the
+                // inbox; this only silences notifications by default).
+                if title.to_lowercase().contains("status broadcast") {
+                    return;
+                }
+
+                // Collapse per-room bursts: the Windows toast backend has no
+                // tag/replace support (see tauri-plugin-notification desktop.rs),
+                // so a burst of N messages in one chat would stack N toasts.
+                // Fallback: at most one toast per room per 30 s window.
+                {
+                    use std::collections::HashMap;
+                    use std::sync::{Mutex, OnceLock};
+                    use std::time::{Duration, Instant};
+                    static LAST_TOAST: OnceLock<
+                        Mutex<HashMap<matrix_sdk::ruma::OwnedRoomId, Instant>>,
+                    > = OnceLock::new();
+                    let mut last = LAST_TOAST
+                        .get_or_init(|| Mutex::new(HashMap::new()))
+                        .lock()
+                        .unwrap();
+                    let now = Instant::now();
+                    if let Some(prev) = last.get(room.room_id()) {
+                        if now.duration_since(*prev) < Duration::from_secs(30) {
+                            return;
+                        }
+                    }
+                    last.insert(room.room_id().to_owned(), now);
+                }
+
                 let preview = match &original.content.msgtype {
                     MessageType::Text(t) => t.body.clone(),
                     MessageType::Image(_) => "[image]".into(),
@@ -442,6 +475,20 @@ async fn start_sync(
                 };
                 let preview: String = preview.chars().take(120).collect();
 
+                // Windows: toast directly via notify-rust with our registered
+                // AppUserModelID. The plugin's builder strips the app id when
+                // running from target/debug, which attributes dev toasts to
+                // "Windows PowerShell" (lib.rs registers the AUMID's DisplayName).
+                #[cfg(windows)]
+                {
+                    let aumid = app.config().identifier.clone();
+                    let mut n = notify_rust::Notification::new();
+                    n.summary(&title).body(&preview).app_id(&aumid);
+                    tauri::async_runtime::spawn_blocking(move || {
+                        let _ = n.show();
+                    });
+                }
+                #[cfg(not(windows))]
                 let _ = app
                     .notification()
                     .builder()

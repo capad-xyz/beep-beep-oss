@@ -420,6 +420,7 @@ dependencies = [
  "matrix-sdk",
  "matrix-sdk-ui",
  "mime",
+ "notify-rust",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -428,6 +429,7 @@ dependencies = [
  "tauri-plugin-notification",
  "tokio",
  "ts-rs",
+ "winreg",
 ]
 
 [[package]]

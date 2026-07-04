@@ -54,6 +54,14 @@ mime = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 async-trait = "0.1"
 
+[target.'cfg(windows)'.dependencies]
+# Direct toast access on Windows (already in the tree via the notification
+# plugin): the plugin strips the AppUserModelID when running from target/debug,
+# which attributes dev toasts to "Windows PowerShell". We set the app id
+# ourselves (see matrix.rs) after registering it in HKCU (see lib.rs).
+notify-rust = "4"
+winreg = "0.55"
+
 [features]
 # Tauri uses this to enable mobile-specific code paths.
 default = []

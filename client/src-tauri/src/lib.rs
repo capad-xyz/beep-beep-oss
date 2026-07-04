@@ -33,6 +33,17 @@ pub fn run() {
                 let _ = win.show();
                 let _ = win.set_focus();
             }
+            // Windows toast identity: toasts are attributed via their
+            // AppUserModelID. Registering ours under HKCU with a DisplayName
+            // makes toasts read "Dispatch" even for the unpackaged dev build
+            // (without this, dev toasts say "Windows PowerShell"). Idempotent.
+            #[cfg(windows)]
+            {
+                let aumid = app.config().identifier.clone();
+                let (key, _) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
+                    .create_subkey(format!("Software\\Classes\\AppUserModelId\\{aumid}"))?;
+                key.set_value("DisplayName", &"Dispatch")?;
+            }
             Ok(())
         })
         // Shared holder for the logged-in Matrix client (see matrix.rs).

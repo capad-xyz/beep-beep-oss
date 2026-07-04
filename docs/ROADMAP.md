@@ -78,9 +78,13 @@ test passes; 6 months is acceptable.
 
 ### Phase 2 — Message parity (WhatsApp table stakes)
 All data-layer first (bindings regen), UI is largely already built to receive:
-- [ ] **Replies rendering**: `in_reply_to` metadata on ChatLine → quote block in
-      bubbles (UI exists, dark today).
-- [ ] **Reactions v2**: `(key, sender, own)` — who reacted + toggle own off.
+- [x] **Replies rendering** (2026-07-05): `reply_to: ReplyPreview` on ChatLine
+      from the Timeline's resolved in-reply-to details → quote block in bubbles.
+- [x] **Reactions v2** (2026-07-05): `Vec<ReactionGroup>` {key, senders,
+      reacted_by_me}; `toggle_reaction` through the open Timeline with the
+      **WhatsApp one-reaction rule** (new emoji replaces your previous one;
+      same emoji toggles off; applied globally — matches WA/Signal/TG and what
+      bridged recipients see). Verified live incl. interactive toggle.
 - [ ] **Delivery/read ticks**: sent → delivered → read mapped from Matrix
       receipts / bridge ticks.
 - [ ] **Voice notes**: playback first (audio element + waveform-lite), recording

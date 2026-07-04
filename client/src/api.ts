@@ -55,13 +55,15 @@ export async function roomMessages(roomId: string, limit = 50): Promise<ChatLine
 }
 
 /**
- * Open a live SDK Timeline for a room. The backend emits an initial
- * "timeline-items" event with the current (cache-backed) messages, then re-emits
- * the full list on every change — so the open conversation stays live with no
- * polling and no per-refresh network call. Call `closeRoomTimeline` when leaving.
+ * Open a live SDK Timeline for a room. Resolves with the initial (cache-backed)
+ * messages — returned rather than emitted so a quiet room can't lose its first
+ * paint to the listener-registration race — then the backend re-emits the full
+ * list as "timeline-items" on every change, so the open conversation stays live
+ * with no polling and no per-refresh network call. Call `closeRoomTimeline`
+ * when leaving.
  */
-export async function openRoomTimeline(roomId: string): Promise<void> {
-  return invoke<void>("open_room_timeline", { roomId });
+export async function openRoomTimeline(roomId: string): Promise<ChatLine[]> {
+  return invoke<ChatLine[]>("open_room_timeline", { roomId });
 }
 
 /** Close the open room's Timeline (retires its live diff stream). */

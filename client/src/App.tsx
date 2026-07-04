@@ -480,9 +480,9 @@ export default function App() {
     }
     setOpenRoom(room);
     // Stream this room live via sliding sync (so its events reach the client),
-    // then open its SDK Timeline: the backend emits "timeline-items" with the
-    // cache-backed history immediately and on every subsequent change. No polling,
-    // no /messages call here — the open-room effect's listener sets the messages.
+    // then open its SDK Timeline: the invoke resolves with the cache-backed
+    // history (no event race), and every subsequent change arrives via the
+    // open-room effect's "timeline-items" listener. No polling, no /messages.
     subscribeRoom(room.id).catch(() => {});
     setMessages([]);
     setError(null);
@@ -491,10 +491,20 @@ export default function App() {
     setReactFor(null);
     setReachedStart(false);
     setLoadingMsgs(true);
-    openRoomTimeline(room.id).catch((err) => {
-      setError(String(err));
-      setLoadingMsgs(false);
-    });
+    openRoomTimeline(room.id)
+      .then((lines) => {
+        // The user may have switched rooms while the timeline was being built.
+        if (openRoomRef.current?.id !== room.id) return;
+        // A live "timeline-items" emission can beat this resolution; it carries
+        // the same-or-fresher full list, so never clobber a non-empty one.
+        setMessages((cur) => (cur.length > 0 ? cur : lines));
+        setLoadingMsgs(false);
+      })
+      .catch((err) => {
+        if (openRoomRef.current?.id !== room.id) return;
+        setError(String(err));
+        setLoadingMsgs(false);
+      });
     // Opening a chat reads it: clears our unread badge + shows read ticks.
     markRead(room.id).catch(() => {});
   }

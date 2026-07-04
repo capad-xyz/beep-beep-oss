@@ -250,11 +250,9 @@ fn spawn_sync_observer(
             }
 
             // Surface the new state to the UI (pill shows only when not Running).
-            if let Some(label) = sync_state_label(&state) {
-                let _ = app.emit("sync-state", label);
-            } else {
-                let _ = app.emit("sync-state", "running");
-            }
+            let label = sync_state_label(&state).unwrap_or("running");
+            eprintln!("[sync-observer] state -> {label}");
+            let _ = app.emit("sync-state", label);
 
             match state {
                 // Healthy again: clear the pill and reset backoff so the *next*
@@ -368,6 +366,30 @@ async fn start_sync(
                 use tauri_plugin_notification::NotificationExt;
 
                 let Some(original) = ev.as_original() else { return };
+
+                // Dedupe: after a reconnect, sliding sync resets its position and
+                // RE-DELIVERS recent timeline events, re-firing this handler — and
+                // the recovery loop can restart sync several times per outage, so
+                // one message can toast repeatedly. The freshness gate below can't
+                // catch that (the event is still young). One toast per event id:
+                // remember the last 256 notified ids in a ring.
+                {
+                    use std::collections::VecDeque;
+                    use std::sync::{Mutex, OnceLock};
+                    static NOTIFIED: OnceLock<Mutex<VecDeque<matrix_sdk::ruma::OwnedEventId>>> =
+                        OnceLock::new();
+                    let mut seen = NOTIFIED
+                        .get_or_init(|| Mutex::new(VecDeque::with_capacity(256)))
+                        .lock()
+                        .unwrap();
+                    if seen.contains(&original.event_id) {
+                        return;
+                    }
+                    if seen.len() >= 256 {
+                        seen.pop_front();
+                    }
+                    seen.push_back(original.event_id.clone());
+                }
 
                 // Freshness: only notify for events younger than ~2 minutes, so
                 // initial sync / backfill can't fire a notification storm.
@@ -629,6 +651,19 @@ pub async fn login(
     // On-disk SQLite store (persists session + E2EE keys) under the app data dir,
     // so the next launch can restore this login (see restore_session).
     let dir = data_dir(&app)?;
+
+    // An orphaned store (no session.json — logged out or expired) still holds the
+    // PREVIOUS account's crypto identity, and the SDK refuses to open it for a
+    // different user ("account in the store doesn't match the constructor").
+    // Nothing references a store without a session, so wipe it and start clean.
+    // Done here rather than in logout(): at this point no client holds the sqlite
+    // files open, so the delete can't race an open handle on Windows.
+    let store = dir.join("matrix.db");
+    if !dir.join("session.json").exists() && store.exists() {
+        std::fs::remove_dir_all(&store)
+            .map_err(|e| format!("failed to clear stale account store: {e}"))?;
+    }
+
     let client = Client::builder()
         .homeserver_url(&homeserver)
         .sqlite_store(dir.join("matrix.db"), None)
@@ -1847,18 +1882,20 @@ async fn map_timeline_items(
 
 /// Open a live Timeline for `room_id` and stream its mapped items to the UI.
 ///
-/// Emits an initial "timeline-items" event with the current (cache-backed) item
-/// list, then spawns a task that re-emits the full mapped list on every diff
-/// batch — coalescing bursts so a flurry of edits/reactions doesn't spam the
-/// webview. Opening a room replaces any previously-open one: the old Timeline is
-/// dropped (stopping its SDK tasks) and its diff task retires via the generation
-/// guard (see `timeline_generation`).
+/// RETURNS the initial (cache-backed) item list rather than emitting it: an
+/// emitted snapshot can fire before the webview's `listen()` registration
+/// completes, and a quiet room then never repaints — the invoke result has no
+/// such race. Subsequent changes still stream as "timeline-items" events from
+/// the spawned diff task — coalescing bursts so a flurry of edits/reactions
+/// doesn't spam the webview. Opening a room replaces any previously-open one:
+/// the old Timeline is dropped (stopping its SDK tasks) and its diff task
+/// retires via the generation guard (see `timeline_generation`).
 #[tauri::command]
 pub async fn open_room_timeline(
     state: tauri::State<'_, MatrixState>,
     app: tauri::AppHandle,
     room_id: String,
-) -> Result<(), String> {
+) -> Result<Vec<ChatLine>, String> {
     use matrix_sdk::ruma::RoomId;
     use matrix_sdk_ui::timeline::RoomExt;
 
@@ -1874,7 +1911,14 @@ pub async fn open_room_timeline(
     drop(guard);
 
     // Build the Timeline for this room (reads from the persistent event cache).
-    let timeline = Arc::new(room.timeline().await.map_err(|e| e.to_string())?);
+    // Bounded: a room whose timeline never finishes building (seen with the
+    // bridge's status-broadcast portal re-paginating forever) would otherwise
+    // hold `open_timeline_lock` for good and wedge every later open behind it.
+    let timeline = tokio::time::timeout(Duration::from_secs(15), room.timeline())
+        .await
+        .map_err(|_| "timed out preparing this conversation".to_string())?
+        .map_err(|e| e.to_string())?;
+    let timeline = Arc::new(timeline);
 
     // Claim a new timeline generation and store this as THE open timeline. Bumping
     // the counter first retires any previous room's diff task before we replace
@@ -1886,13 +1930,11 @@ pub async fn open_room_timeline(
     // and a stream of batched diffs (Vec<VectorDiff<_>> per SDK update).
     let (initial_items, mut diff_stream) = timeline.subscribe().await;
 
-    // Emit the initial list right away so the conversation paints from cache.
+    // Map the initial list; it's returned at the end so the conversation paints
+    // from cache the moment the invoke resolves (see the doc comment for why this
+    // is a return value and not an emission).
     let room_for_map = room.clone();
     let lines = map_timeline_items(&room_for_map, &initial_items).await;
-    let _ = app.emit(
-        "timeline-items",
-        serde_json::json!({ "room_id": room_id.clone(), "lines": lines }),
-    );
 
     // Diff-forwarding task: on each diff batch we IGNORE the diff contents and
     // just re-read + re-map the current items, because the frontend replaces its
@@ -1935,7 +1977,7 @@ pub async fn open_room_timeline(
         }
     });
 
-    Ok(())
+    Ok(lines)
 }
 
 /// Close the open room's Timeline (called when the user returns to the inbox).

@@ -10,8 +10,9 @@
  */
 export type RoomSummary = { id: string, name: string | null, unread: bigint, 
 /**
- * Whether this room is a bridged chat. Placeholder for now; a real
- * implementation inspects room state for the bridge's marker events.
+ * Whether this room is a bridged chat: true iff the room belongs to a
+ * bridge-account Space (see `account`). Drives the WhatsApp/Matrix
+ * network labels and filters across the UI.
  */
 is_bridged: boolean, 
 /**

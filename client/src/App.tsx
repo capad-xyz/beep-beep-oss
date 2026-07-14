@@ -159,6 +159,7 @@ export default function App() {
                 onOpen={openRoom}
                 onToggleFlag={roomsState.toggleRoomFlag}
                 onCompose={() => setComposeOpen(true)}
+                fullWidth={singlePane}
               />
             )}
             {(!singlePane || tl.openRoom) && (
@@ -211,6 +212,22 @@ export default function App() {
                 onToggleFlag={roomsState.toggleRoomFlag}
                 overlay={drawerOverlays}
               />
+            )}
+            {/* Action errors normally render inside the conversation pane —
+                but a failed OPEN (e.g. accepting an invite while offline)
+                leaves no pane to render in, silently eating the error. Float
+                it over the list instead. */}
+            {tl.actionError && !tl.openRoom && (
+              <div className="glass-float absolute bottom-4 left-1/2 z-20 flex max-w-[80%] -translate-x-1/2 items-center gap-2 rounded-full border border-danger/30 px-4 py-2 text-[13px] text-danger">
+                <span className="min-w-0 truncate">{tl.actionError}</span>
+                <button
+                  type="button"
+                  onClick={tl.clearActionError}
+                  className="micro-sm flex-none hover:underline"
+                >
+                  Dismiss
+                </button>
+              </div>
             )}
           </div>
         )}

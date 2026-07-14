@@ -113,10 +113,10 @@ export function MessageBubble({
               title={g.senders.join(", ")}
               onClick={() => onReact(m, g.key)}
               className={
-                "flex items-center gap-1 rounded-full border px-2 py-px shadow-sh1 transition-colors " +
+                "flex items-center gap-1 rounded-full border px-2 py-px shadow-sh1 backdrop-blur-md transition-colors " +
                 (g.reacted_by_me
-                  ? "border-oxblood bg-oxblood-tint"
-                  : "border-border bg-elevated hover:border-border-strong")
+                  ? "border-oxblood bg-oxblood-tint/90"
+                  : "border-border/70 bg-elevated/80 hover:border-border-strong")
               }
             >
               <span className="text-[12px]">{g.key}</span>
@@ -132,7 +132,7 @@ export function MessageBubble({
       {m.event_id && (
         <div
           className={
-            "absolute -top-3 z-[2] hidden items-center gap-0.5 rounded-full border border-border bg-elevated px-1 py-0.5 shadow-sh2 group-hover:flex " +
+            "glass-float absolute -top-3 z-[2] hidden items-center gap-0.5 rounded-full border border-border/60 px-1 py-0.5 group-hover:flex " +
             (own ? "right-2" : "left-2")
           }
         >
@@ -170,7 +170,7 @@ export function MessageBubble({
       {pickerOpen && m.event_id && (
         <div
           className={
-            "absolute -top-12 z-[3] flex gap-0.5 rounded-full border border-border bg-elevated px-1.5 py-1 shadow-sh2 " +
+            "glass-float absolute -top-12 z-[3] flex gap-0.5 rounded-full border border-border/60 px-1.5 py-1 " +
             (own ? "right-2" : "left-2")
           }
         >

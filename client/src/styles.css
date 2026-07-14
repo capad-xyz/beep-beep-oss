@@ -117,6 +117,39 @@
   ::selection {
     background: #f2e4e3;
     }
+
+  /* ── Interaction feedback ──────────────────────────────────────────────
+     WebView buttons default to an arrow cursor (native-widget convention);
+     in an app UI every interactive element should read as clickable. */
+  button, [role="button"], a, select, summary, label[for] {
+    cursor: pointer;
+  }
+  button:disabled, [role="button"][aria-disabled="true"] {
+    cursor: default;
+  }
+  /* Press feedback: a quick, subtle sink on every enabled button. Transform
+     only — never layout. Squares/circles compress a touch; it reads tactile. */
+  button {
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 120ms cubic-bezier(0.2, 0, 0, 1);
+  }
+  button:not(:disabled):active {
+    transform: scale(0.94);
+  }
+  /* Keyboard affordance: a visible ring only for focus-visible, so mouse
+     clicks stay clean but tabbing is never lost. */
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--ring) 55%, transparent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  input:focus-visible, textarea:focus-visible {
+    outline: none; /* fields show focus via their container styling */
+  }
+  @media (prefers-reduced-motion: reduce) {
+    button { transition: none; }
+    button:not(:disabled):active { transform: none; }
+  }
 }
 
 @layer utilities {
@@ -138,6 +171,55 @@
     background:
       radial-gradient(circle at 1px 1px, rgba(11, 11, 13, .035) 1px, transparent 0) 0 0/22px 22px,
       #ece4d8;
+  }
+
+  /* ── Liquid glass material ─────────────────────────────────────────────
+     Frosted, warm-paper glass. Three weights + tinted variants. The inset
+     top highlight is the "liquid" edge — a specular line where light hits
+     the pane. Content scrolling behind a .glass element is what sells it;
+     on static surfaces it still reads as material, just quieter. */
+  .glass {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 254, 251, 0.72),
+      rgba(246, 245, 240, 0.55)
+    );
+    -webkit-backdrop-filter: blur(16px) saturate(1.5);
+    backdrop-filter: blur(16px) saturate(1.5);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      0 1px 2px rgba(11, 11, 13, 0.04);
+  }
+  .glass-strong {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 254, 251, 0.86),
+      rgba(246, 245, 240, 0.74)
+    );
+    -webkit-backdrop-filter: blur(22px) saturate(1.6);
+    backdrop-filter: blur(22px) saturate(1.6);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.65),
+      0 4px 14px rgba(11, 11, 13, 0.08);
+  }
+  .glass-soft {
+    background: rgba(246, 245, 240, 0.45);
+    -webkit-backdrop-filter: blur(10px) saturate(1.35);
+    backdrop-filter: blur(10px) saturate(1.35);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  }
+  /* Floating glass: pills, pickers, hover bars — stronger lift. */
+  .glass-float {
+    background: linear-gradient(
+      180deg,
+      rgba(255, 254, 251, 0.82),
+      rgba(250, 248, 243, 0.68)
+    );
+    -webkit-backdrop-filter: blur(18px) saturate(1.6);
+    backdrop-filter: blur(18px) saturate(1.6);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.7),
+      0 6px 22px rgba(11, 11, 13, 0.12);
   }
 }
 

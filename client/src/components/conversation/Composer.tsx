@@ -29,7 +29,7 @@ export function Composer({
   const context = editing ?? replyTo;
 
   return (
-    <div className="flex-none border-t border-border bg-panel">
+    <div className="glass relative z-10 flex-none border-t border-border/60">
       {typingNames.length > 0 && (
         <div className="micro-sm px-5 pt-2 text-mut normal-case tracking-normal">
           {typingNames.join(", ")} {typingNames.length === 1 ? "is" : "are"} typing…
@@ -83,7 +83,7 @@ export function Composer({
             <Icon name="plus" />
           )}
         </button>
-        <div className="flex flex-1 items-center rounded-full border border-border-strong bg-elevated px-4 py-[11px] shadow-sh1">
+        <div className="flex flex-1 items-center rounded-full border border-border-strong/70 bg-elevated/75 px-4 py-[11px] shadow-sh1 backdrop-blur-md transition-shadow focus-within:border-oxblood/40 focus-within:shadow-[0_0_0_3px_rgba(143,59,69,0.12)]">
           <input
             value={draft}
             onChange={(e) => onDraft(e.target.value)}
@@ -99,8 +99,9 @@ export function Composer({
           type="submit"
           title={editing ? "Save" : "Send"}
           disabled={!draft.trim()}
-          className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-oxblood text-white shadow-sh1 transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="relative flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh2 transition-opacity hover:opacity-90 disabled:opacity-40"
         >
+          <span className="absolute inset-x-0 top-0 h-1/2 rounded-t-full bg-gradient-to-b from-white/30 to-transparent" />
           {editing ? <Icon name="check" size={18} /> : <Icon name="send" size={18} />}
         </button>
       </form>

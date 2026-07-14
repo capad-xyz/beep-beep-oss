@@ -57,9 +57,12 @@ export function ConversationPane(props: {
   const label = displayName(room);
 
   return (
-    <div className="wallpaper-dots flex min-w-0 flex-1 flex-col">
-      {/* header */}
-      <div className="flex h-16 flex-none items-center gap-3 border-b border-border bg-panel px-5">
+    <div className="wallpaper-dots relative flex min-w-0 flex-1 flex-col">
+      {/* header — floating frosted glass; the message list scrolls UNDER it
+          (list side pads itself clear). Rendered before the body in DOM but
+          lifted with z-10. */}
+      <div className="absolute inset-x-0 top-0 z-10">
+      <div className="glass flex h-16 items-center gap-3 border-b border-border/60 px-5">
         {props.showBack && (
           <button
             type="button"
@@ -110,23 +113,24 @@ export function ConversationPane(props: {
       </div>
 
       {props.actionError && (
-        <div className="flex items-center gap-2 border-b border-danger/20 bg-danger/10 px-5 py-2 text-[13px] text-danger">
+        <div className="glass-soft flex items-center gap-2 border-b border-danger/25 px-5 py-2 text-[13px] text-danger">
           <span className="min-w-0 flex-1 truncate">{props.actionError}</span>
           <button type="button" onClick={props.onDismissActionError} className="micro-sm hover:underline">
             Dismiss
           </button>
         </div>
       )}
+      </div>
 
       {/* body */}
       {props.openError ? (
         <TimelineErrorState detail={props.openError} onRetry={props.onRetryOpen} />
       ) : props.loadingMsgs && props.messages.length === 0 ? (
-        <div className="flex min-h-0 flex-1 items-center justify-center">
+        <div className="flex min-h-0 flex-1 items-center justify-center pt-16">
           <span className="micro text-mut">Loading messages…</span>
         </div>
       ) : props.messages.length === 0 ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 pt-16">
           <span className="micro text-mut">No messages yet</span>
           <span className="text-[13px] text-faint">Say hello — messages appear here.</span>
         </div>

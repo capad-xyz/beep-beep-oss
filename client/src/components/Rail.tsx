@@ -27,7 +27,7 @@ export function Rail({
   const userInitials = initials(userId.replace(/^@/, "").split(":")[0] || "?");
 
   return (
-    <div className="flex w-16 flex-none flex-col items-center gap-3 border-r border-border bg-panel py-4">
+    <div className="flex w-16 flex-none flex-col items-center gap-3 border-r border-border bg-gradient-to-b from-panel to-ground py-4">
       <button
         type="button"
         title="All chats"
@@ -35,8 +35,9 @@ export function Rail({
           onSurface("chats");
           onAccountFilter(null);
         }}
-        className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-oxblood text-white shadow-sh1"
+        className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-[12px] bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 transition-shadow hover:shadow-sh2"
       >
+        <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
         <Icon name="chat" />
       </button>
       <div className="my-0.5 h-px w-7 bg-border" />
@@ -58,8 +59,10 @@ export function Rail({
               )}
               <span
                 className={
-                  "relative flex h-[42px] w-[42px] items-center justify-center rounded-full font-mono text-xs font-semibold text-white bg-net-whatsapp " +
-                  (active ? "" : "opacity-90")
+                  "relative flex h-[42px] w-[42px] items-center justify-center rounded-full font-mono text-xs font-semibold text-white bg-net-whatsapp shadow-sh1 transition-all duration-150 " +
+                  (active
+                    ? "ring-2 ring-oxblood/35 ring-offset-2 ring-offset-panel"
+                    : "opacity-90 hover:opacity-100 hover:shadow-sh2")
                 }
               >
                 {initials(a.label)}

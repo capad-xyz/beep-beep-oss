@@ -16,7 +16,7 @@ export function DegradedBanner() {
   const [dismissed, setDismissed] = useState(false);
   if (dismissed) return null;
   return (
-    <div className="flex h-9 flex-none items-center justify-center gap-3 border-b border-warn/60 bg-warn/15 px-4 text-[#8a5f1d]">
+    <div className="glass-soft flex h-9 flex-none items-center justify-center gap-3 border-b border-warn/50 px-4 text-[#8a5f1d] [background:linear-gradient(180deg,rgba(201,138,42,0.16),rgba(201,138,42,0.10))]">
       <span className="micro">
         Some conversations may be out of date — refresh when you're ready
       </span>

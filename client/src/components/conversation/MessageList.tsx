@@ -50,7 +50,9 @@ export function MessageList({
     <div
       ref={scrollRef}
       onScroll={onScroll}
-      className="flex min-h-0 flex-1 flex-col overflow-y-auto px-8 py-6"
+      // pt clears the pane's floating glass header (h-16) — content scrolls
+      // under the frost, which is the whole point of the glass chrome.
+      className="flex min-h-0 flex-1 flex-col overflow-y-auto px-8 pb-6 pt-[84px]"
     >
       {messages.length > 0 && (
         <div className="mb-2 self-center">
@@ -61,7 +63,7 @@ export function MessageList({
               type="button"
               disabled={loadingOlder}
               onClick={onLoadOlder}
-              className="micro-sm rounded-full border border-border bg-panel px-3 py-1 text-mut transition-colors hover:text-ink disabled:opacity-60"
+              className="micro-sm glass-float rounded-full border border-border/60 px-3 py-1 text-mut transition-colors hover:text-ink disabled:opacity-60"
             >
               {loadingOlder ? "Loading…" : "Load older"}
             </button>
@@ -78,7 +80,7 @@ export function MessageList({
         return (
           <Fragment key={m.event_id ?? `local-${i}`}>
             {showDay && (
-              <div className="micro-sm my-2 self-center rounded-full border border-border bg-panel px-3 py-1 text-mut">
+              <div className="micro-sm glass-float my-2 self-center rounded-full border border-border/60 px-3 py-1 text-mut">
                 {formatDay(m.ts)}
               </div>
             )}

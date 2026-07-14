@@ -133,24 +133,32 @@ All data-layer first (bindings regen), UI is largely already built to receive:
 Guiding constraint: **keep the current speed** (the thing that already feels
 better than Beeper). Do NOT eager-load everything — load intelligently to a
 depth chosen by measurement, not guesswork.
-- [ ] **Performance matrix first**: measure open-latency, memory, and disk vs
-      history depth and number of warmed rooms. The matrix decides the
-      defaults below — no magic numbers.
-- [ ] **(Layer 1) Cross-room timeline warming**: recent/important rooms open
-      *instantly* (warm their timelines in the background by recency + unread +
-      pinned), instead of building the Timeline only on click. SDK-limited on
-      0.18 (no multi-room event-cache prefetch); revisit depth after 0.19.
-- [ ] **(Layer 2) Within-room initial window + backfill**: load a larger
-      initial window and background-backfill history to a sensible depth so
-      "load older" isn't needed for conversations WhatsApp Desktop shows fine.
-      Distinct from Layer 1 (this is depth *inside* the open room; Layer 1 is
-      *which* rooms are ready). Both bounded by the perf matrix.
+- [x] **Performance matrix first** *(instrumentation shipped 2026-07-14,
+      `perf.rs`)*: every timeline open (build_ms + initial_lines), warming
+      pass, and backfill round logs to `<app_data>/perf.log`. The matrix
+      decides the defaults below — dogfood, then tune the `WARM_ROOM_COUNT` /
+      `AUTO_BACKFILL_*` constants in matrix.rs from the logged numbers.
+- [x] **(Layer 1) Cross-room timeline warming** *(shipped 2026-07-14)*: after
+      sync settles, the top `WARM_ROOM_COUNT` rooms (pinned > unread > recency,
+      joined + non-archived only) get one batched sliding-sync subscription, so
+      their recent history streams into the event cache before first click.
+      Verified live: 12 rooms warmed in 107ms. SDK-limited on 0.18 (no
+      multi-room event-cache prefetch); revisit depth after 0.19.
+- [x] **(Layer 2) Within-room initial window + backfill** *(shipped
+      2026-07-14)*: a conversation opening under `AUTO_BACKFILL_TARGET_LINES`
+      back-paginates in the background (bounded rounds), so "load older" isn't
+      needed for conversations WhatsApp Desktop shows fine. Constants pending
+      perf.log tuning.
 - [ ] **Degraded-recovery rework** (replaces the restart-prompt banner from the
       2026-07-05 containment fix — bad UX mid-typing): (a) **persist composer
-      drafts** so no recovery ever loses typing; (b) attempt **in-place
-      open-room Timeline rebuild** on detected staleness instead of a restart;
-      (c) only if that fails, a **passive, dismissible** notice — never a
-      modal restart demand.
+      drafts** so no recovery ever loses typing *(done 2026-07-07, lib/drafts)*;
+      (b) attempt **in-place open-room Timeline rebuild** on detected staleness
+      instead of a restart; (c) only if that fails, a **passive, dismissible**
+      notice — never a modal restart demand *(done 2026-07-07,
+      DegradedBanner)*. Remaining: (b). Upstream note: failing repro test for
+      the root-cause bug delivered on matrix-rust-sdk#5416 (2026-07-14);
+      maintainer offered to fix given a test — if that lands, (b) and the
+      panic-guard wipe both shrink to removal.
 - [ ] **Verify bridge read-ticks** (Phase-2 carryover): real 2-person WhatsApp
       chat test to confirm mautrix maps WhatsApp delivered/read → Matrix
       receipts, so `read_by_other` double-ticks actually light up on bridged

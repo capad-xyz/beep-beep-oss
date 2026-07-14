@@ -40,7 +40,9 @@ export function NewChatModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[660px] w-[520px] flex-col gap-0 overflow-hidden p-0">
+      {/* Height must never exceed the viewport: on a short window a fixed
+          660px pushed the header (and its close button) off-screen. */}
+      <DialogContent className="flex max-h-[min(660px,85vh)] w-[min(520px,92vw)] flex-col gap-0 overflow-hidden p-0">
         <div className="flex items-center justify-between border-b border-border px-6 pb-4 pt-5">
           <DialogTitle className="text-lg font-semibold">New chat</DialogTitle>
         </div>

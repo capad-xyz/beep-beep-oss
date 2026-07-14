@@ -22,11 +22,14 @@ export function ChatList({
   onOpen,
   onToggleFlag,
   onCompose,
+  fullWidth = false,
 }: {
   rooms: RoomSummary[];
   visibleRooms: RoomSummary[];
   filter: RoomFilter;
   onFilter: (f: RoomFilter) => void;
+  /** Single-pane mode with no open room: the list IS the surface — stretch. */
+  fullWidth?: boolean;
   unreadTotal: number;
   archivedCount: number;
   openRoomId: string | null;
@@ -68,8 +71,13 @@ export function ChatList({
       : "border border-border bg-elevated text-mut hover:text-ink");
 
   return (
-    <div className="flex w-[360px] flex-none flex-col border-r border-border bg-panel min-h-0">
-      <div className="flex flex-col gap-4 px-5 pb-4 pt-5">
+    <div
+      className={
+        "flex flex-col border-r border-border bg-panel min-h-0 " +
+        (fullWidth ? "min-w-0 flex-1" : "w-[360px] flex-none")
+      }
+    >
+      <div className="glass-soft z-10 flex flex-col gap-4 border-b border-border/50 px-5 pb-4 pt-5">
         <div className="flex items-center justify-between">
           <span className="text-xl font-semibold tracking-[-0.01em]">Chats</span>
           <div className="flex gap-2">
@@ -77,13 +85,14 @@ export function ChatList({
               type="button"
               title="New chat"
               onClick={onCompose}
-              className="flex h-[34px] w-[34px] items-center justify-center rounded-md bg-oxblood text-white shadow-sh1"
+              className="relative flex h-[34px] w-[34px] items-center justify-center overflow-hidden rounded-md bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 transition-shadow hover:shadow-sh2"
             >
+              <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
               <Icon name="compose" size={17} />
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-2 rounded-md border border-border bg-elevated px-3 py-[9px] shadow-sh1">
+        <div className="flex items-center gap-2 rounded-md border border-border bg-elevated/75 px-3 py-[9px] shadow-sh1 backdrop-blur-md transition-shadow focus-within:border-oxblood/40 focus-within:shadow-[0_0_0_3px_rgba(143,59,69,0.12)]">
           <span className="flex text-faint">
             <Icon name="search" size={16} />
           </span>

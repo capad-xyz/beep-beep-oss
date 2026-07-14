@@ -27,12 +27,17 @@ export function LinkWhatsApp({
 
   const [lines, setLines] = useState<ChatLine[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [phase, setPhase] = useState<"starting" | "waiting">("starting");
-  const [attempt, setAttempt] = useState(0); // bump to retry
+  const [phase, setPhase] = useState<"idle" | "starting" | "waiting">("idle");
+  const [attempt, setAttempt] = useState(0); // 0 = not started; bump to start/retry
 
-  // Kick off the login once per attempt, then stream the bot DM's timeline to
-  // catch the QR image. The backend guarantees the target is a bot-only DM.
+  // Kick off the login — but ONLY after an explicit click (attempt > 0).
+  // Never on mount: auto-firing a bridge command the moment a screen renders
+  // means a stray navigation can initiate a WhatsApp login the user didn't
+  // deliberately ask for (and starts the QR's expiry clock before they have
+  // their phone out). Then stream the bot DM's timeline to catch the QR image.
+  // The backend guarantees the target is a bot-only DM.
   useEffect(() => {
+    if (attempt === 0) return;
     let alive = true;
     let unlisten: (() => void) | undefined;
     setPhase("starting");
@@ -103,6 +108,14 @@ export function LinkWhatsApp({
             <Icon name="alert" size={22} className="text-danger" />
             <span className="text-[12px] text-danger">Couldn't reach the bridge</span>
           </div>
+        ) : phase === "idle" ? (
+          <button
+            type="button"
+            onClick={() => setAttempt(1)}
+            className="rounded-full bg-oxblood px-6 py-2.5 text-sm font-semibold text-white shadow-sh1 hover:opacity-90"
+          >
+            Show QR code
+          </button>
         ) : (
           <span className="micro text-mut">
             {phase === "starting" ? "Contacting bridge…" : "Waiting for QR…"}

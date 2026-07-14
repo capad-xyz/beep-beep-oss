@@ -717,8 +717,9 @@ pub struct RoomSummary {
     pub id: String,
     pub name: Option<String>,
     pub unread: u64,
-    /// Whether this room is a bridged chat. Placeholder for now; a real
-    /// implementation inspects room state for the bridge's marker events.
+    /// Whether this room is a bridged chat: true iff the room belongs to a
+    /// bridge-account Space (see `account`). Drives the WhatsApp/Matrix
+    /// network labels and filters across the UI.
     pub is_bridged: bool,
     /// Our membership: "joined" | "invited" | "left" | "knocked" | "banned".
     /// The mautrix bridge invites us into each WhatsApp portal and waits for us
@@ -1037,7 +1038,10 @@ async fn local_room_summary(
         id: room.room_id().to_string(),
         name,
         unread: room.unread_notification_counts().notification_count,
-        is_bridged: false,
+        // A bridged chat is exactly one that lives inside a bridge-account
+        // Space (mautrix models each WhatsApp login as a Space over its
+        // portals) — so membership in an account IS the bridged signal.
+        is_bridged: account.is_some(),
         membership,
         last_message,
         last_ts,
@@ -1686,6 +1690,13 @@ pub async fn send_message(
 /// The bot localpart matches the bridge's `appservice.bot_username`
 /// (mautrix-whatsapp default `whatsappbot`); the domain is our own homeserver.
 /// Returns the bot DM's room id so the UI can render the QR from its timeline.
+/// SAFETY PAUSE (2026-07-14): the user's WhatsApp account is under review after
+/// the 2026-07-04 login-qr incident. Until it's confirmed clean, NOTHING may
+/// initiate a WhatsApp login — a queued "login qr" would hit WhatsApp's servers
+/// the moment the (currently stopped) bridge restarts. Flip to `false` only
+/// when the user says the account is clean.
+const WHATSAPP_LOGIN_PAUSED: bool = true;
+
 #[tauri::command]
 pub async fn whatsapp_start_login(
     state: tauri::State<'_, MatrixState>,
@@ -1693,6 +1704,12 @@ pub async fn whatsapp_start_login(
     use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
     use matrix_sdk::ruma::UserId;
     use matrix_sdk::RoomMemberships;
+
+    if WHATSAPP_LOGIN_PAUSED {
+        return Err(
+            "WhatsApp linking is paused while the account is under review.".to_string()
+        );
+    }
 
     let guard = state.client.read().await;
     let client = guard.as_ref().ok_or("not logged in")?;

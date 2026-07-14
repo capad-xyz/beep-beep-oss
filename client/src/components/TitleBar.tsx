@@ -80,7 +80,7 @@ export function TitleBar() {
           <Icon name="chat" size={13} strokeWidth={2.2} />
         </span>
         <span className="micro text-ink-soft">
-          Dispatch
+          Dooper
         </span>
       </div>
 

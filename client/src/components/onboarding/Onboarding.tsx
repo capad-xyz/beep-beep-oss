@@ -27,7 +27,7 @@ export function Onboarding({
   return (
     <OnboardingShell>
       <div className="flex flex-col items-center gap-1 text-center">
-        <div className="text-[22px] font-semibold tracking-[-0.01em]">Welcome to Dispatch</div>
+        <div className="text-[22px] font-semibold tracking-[-0.01em]">Welcome to Dooper</div>
         <div className="text-[13px] text-mut">All your chats, one quiet window.</div>
       </div>
 

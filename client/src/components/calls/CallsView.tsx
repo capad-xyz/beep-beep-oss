@@ -25,7 +25,7 @@ export function CallsView() {
               </span>
               <span className="flex-1 text-left">
                 <span className="block text-sm font-semibold text-oxblood-ink">Create call link</span>
-                <span className="block text-xs text-mut">Share a link for a Dispatch call</span>
+                <span className="block text-xs text-mut">Share a link for a Dooper call</span>
               </span>
             </TooltipTrigger>
             <TooltipContent>Calling isn't wired up yet</TooltipContent>

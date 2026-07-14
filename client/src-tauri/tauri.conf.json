@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "beep-beep",
+  "productName": "Dooper",
   "version": "0.0.0",
   "identifier": "io.capad.beepbeep",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "beep-beep",
+        "title": "Dooper",
         "width": 1280,
         "height": 800,
         "minWidth": 760,

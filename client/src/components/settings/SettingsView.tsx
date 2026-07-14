@@ -114,7 +114,7 @@ export function SettingsView({
           <>
             <h3 className="m-0 text-[22px] font-semibold tracking-[-0.01em]">About</h3>
             <div className="flex flex-col gap-2 rounded-lg border border-border bg-elevated p-4 shadow-sh1">
-              <Row k="App" v="Dispatch (beep-beep OSS)" />
+              <Row k="App" v="Dooper — Beeper, but open-source" />
               <Row k="Signed in as" v={userId} />
               <Row k="Stack" v="Tauri · matrix-rust-sdk · sliding sync · mautrix-whatsapp" />
             </div>

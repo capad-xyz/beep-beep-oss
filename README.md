@@ -1,15 +1,15 @@
-# beep-beep-oss
+# Dooper
 
-> An open-source, self-hostable universal chat client — all your messaging networks
-> in one place, with **instant sync** and **no features locked behind a paywall**.
+> **Beeper, but open-source.** A self-hostable universal chat client — all your
+> messaging networks in one place, with **instant sync** and **no features locked
+> behind a paywall**.
 
 Built on [Matrix](https://matrix.org) and the [mautrix](https://github.com/mautrix)
-bridge ecosystem, `beep-beep-oss` aims to be the chat aggregator that respects you:
+bridge ecosystem, Dooper aims to be the chat aggregator that respects you:
 your messages are never artificially delayed, your accounts are yours, and the core
 is — and always will be — free software.
 
-> **Working name.** `beep-beep-oss` is a placeholder; the project will be rebranded
-> before any public release.
+> The repository keeps its `beep-beep-oss` codename; the product name is **Dooper**.
 
 ---
 

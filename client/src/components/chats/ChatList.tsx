@@ -4,6 +4,7 @@ import type { SearchHit } from "@/bindings/SearchHit";
 import type { RoomFilter } from "@/hooks/useRooms";
 import { searchMessages } from "@/api";
 import { Icon } from "@/components/Icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { RoomRow } from "@/components/chats/RoomRow";
 import { SearchResults } from "@/components/chats/SearchResults";
 import { displayName } from "@/lib/format";
@@ -81,15 +82,19 @@ export function ChatList({
         <div className="flex items-center justify-between">
           <span className="text-xl font-semibold tracking-[-0.01em]">Chats</span>
           <div className="flex gap-2">
-            <button
-              type="button"
-              title="New chat"
-              onClick={onCompose}
-              className="relative flex h-[34px] w-[34px] items-center justify-center overflow-hidden rounded-md bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 transition-shadow hover:shadow-sh2"
-            >
-              <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
-              <Icon name="compose" size={17} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={onCompose}
+                  className="relative flex h-[34px] w-[34px] items-center justify-center overflow-hidden rounded-md bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 transition-shadow hover:shadow-sh2"
+                >
+                  <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
+                  <Icon name="compose" size={17} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">New chat</TooltipContent>
+            </Tooltip>
           </div>
         </div>
         <div className="flex items-center gap-2 rounded-md border border-border bg-elevated/75 px-3 py-[9px] shadow-sh1 backdrop-blur-md transition-shadow focus-within:border-oxblood/40 focus-within:shadow-[0_0_0_3px_rgba(143,59,69,0.12)]">

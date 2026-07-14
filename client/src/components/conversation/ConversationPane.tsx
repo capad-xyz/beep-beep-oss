@@ -64,14 +64,19 @@ export function ConversationPane(props: {
       <div className="absolute inset-x-0 top-0 z-10">
       <div className="glass flex h-16 items-center gap-3 border-b border-border/60 px-5">
         {props.showBack && (
-          <button
-            type="button"
-            title="Back to chats"
-            onClick={props.onBack}
-            className="flex h-9 w-9 flex-none items-center justify-center rounded-md text-oxblood hover:bg-oxblood-tint"
-          >
-            <Icon name="back" size={22} strokeWidth={2.2} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="Back to chats"
+                onClick={props.onBack}
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-md text-oxblood hover:bg-oxblood-tint"
+              >
+                <Icon name="back" size={22} strokeWidth={2.2} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Back to chats</TooltipContent>
+          </Tooltip>
         )}
         <RoomAvatar id={room.id} label={label} size={40} />
         <div className="min-w-0 flex-1">
@@ -98,17 +103,22 @@ export function ConversationPane(props: {
             </TooltipTrigger>
             <TooltipContent>Calls aren't wired up yet</TooltipContent>
           </Tooltip>
-          <button
-            type="button"
-            title="Conversation info"
-            onClick={props.onToggleDrawer}
-            className={
-              "flex h-9 w-9 items-center justify-center rounded-md transition-colors " +
-              (props.drawerOpen ? "bg-oxblood-tint text-oxblood" : "hover:bg-elevated")
-            }
-          >
-            <Icon name="info" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="Conversation info"
+                onClick={props.onToggleDrawer}
+                className={
+                  "flex h-9 w-9 items-center justify-center rounded-md transition-colors " +
+                  (props.drawerOpen ? "bg-oxblood-tint text-oxblood" : "hover:bg-elevated")
+                }
+              >
+                <Icon name="info" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Conversation info</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 

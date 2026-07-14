@@ -2,6 +2,7 @@ import type { RoomSummary } from "@/bindings/RoomSummary";
 import { displayName } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { RoomAvatar } from "@/components/chats/RoomAvatar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // 300px info drawer (Dispatch spec), toggled from the conversation header.
 // Rows are limited to what the data layer actually supports: mute / pin /
@@ -56,14 +57,19 @@ export function InfoDrawer({
         <span className="flex-1 text-sm font-semibold">
           {room.is_bridged ? "Contact info" : "Room info"}
         </span>
-        <button
-          type="button"
-          title="Close"
-          onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-md text-mut hover:bg-elevated hover:text-ink"
-        >
-          <Icon name="close" size={16} />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-mut hover:bg-elevated hover:text-ink"
+            >
+              <Icon name="close" size={16} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Close</TooltipContent>
+        </Tooltip>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-6">
         <div className="flex flex-col items-center gap-1.5">

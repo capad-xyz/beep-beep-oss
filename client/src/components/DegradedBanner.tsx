@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { restartApp } from "@/api";
 import { Icon } from "@/components/Icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Shown after a cache-class panic (matrix-sdk #5416): the event cache is
 // poisoned, so open conversations may be frozen on stale content even though
@@ -20,26 +21,35 @@ export function DegradedBanner() {
       <span className="micro">
         Some conversations may be out of date — refresh when you're ready
       </span>
-      <button
-        type="button"
-        disabled={restarting}
-        title="Your drafts are saved and will survive the restart"
-        onClick={() => {
-          setRestarting(true);
-          restartApp().catch(() => setRestarting(false));
-        }}
-        className="micro rounded-full bg-warn/25 px-3 py-0.5 font-semibold transition-colors hover:bg-warn/40 disabled:opacity-60"
-      >
-        {restarting ? "Refreshing…" : "Refresh now"}
-      </button>
-      <button
-        type="button"
-        title="Dismiss"
-        onClick={() => setDismissed(true)}
-        className="flex h-5 w-5 items-center justify-center rounded-full text-[#8a5f1d]/70 hover:bg-warn/25 hover:text-[#8a5f1d]"
-      >
-        <Icon name="close" size={13} />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            disabled={restarting}
+            onClick={() => {
+              setRestarting(true);
+              restartApp().catch(() => setRestarting(false));
+            }}
+            className="micro rounded-full bg-warn/25 px-3 py-0.5 font-semibold transition-colors hover:bg-warn/40 disabled:opacity-60"
+          >
+            {restarting ? "Refreshing…" : "Refresh now"}
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Your drafts are saved and will survive the restart</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setDismissed(true)}
+            className="flex h-5 w-5 items-center justify-center rounded-full text-[#8a5f1d]/70 hover:bg-warn/25 hover:text-[#8a5f1d]"
+          >
+            <Icon name="close" size={13} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Dismiss</TooltipContent>
+      </Tooltip>
     </div>
   );
 }

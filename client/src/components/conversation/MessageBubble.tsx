@@ -3,6 +3,7 @@ import type { ChatLine } from "@/bindings/ChatLine";
 import { formatTime } from "@/lib/format";
 import { Icon } from "@/components/Icon";
 import { MessageImage } from "@/components/conversation/MessageImage";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const QUICK_EMOJI = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -45,13 +46,23 @@ export function MessageBubble({
           {formatTime(m.ts)}
           {own &&
             (m.read_by_other ? (
-              <span className="ml-0.5 text-oxblood" title="Read">
-                <Icon name="checks" size={15} strokeWidth={2} />
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="ml-0.5 text-oxblood">
+                    <Icon name="checks" size={15} strokeWidth={2} />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Read</TooltipContent>
+              </Tooltip>
             ) : (
-              <span className="ml-0.5 text-mut" title="Sent">
-                <Icon name="check" size={13} strokeWidth={2.2} />
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="ml-0.5 text-mut">
+                    <Icon name="check" size={13} strokeWidth={2.2} />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Sent</TooltipContent>
+              </Tooltip>
             ))}
         </>
       )}
@@ -107,23 +118,26 @@ export function MessageBubble({
       {m.reactions.length > 0 && (
         <span className={"z-[1] -mt-2 flex gap-1 " + (own ? "mr-2" : "ml-2")}>
           {m.reactions.map((g) => (
-            <button
-              key={g.key}
-              type="button"
-              title={g.senders.join(", ")}
-              onClick={() => onReact(m, g.key)}
-              className={
-                "flex items-center gap-1 rounded-full border px-2 py-px shadow-sh1 backdrop-blur-md transition-colors " +
-                (g.reacted_by_me
-                  ? "border-oxblood bg-oxblood-tint/90"
-                  : "border-border/70 bg-elevated/80 hover:border-border-strong")
-              }
-            >
-              <span className="text-[12px]">{g.key}</span>
-              {g.senders.length > 1 && (
-                <span className="font-mono text-[10px] text-mut">{g.senders.length}</span>
-              )}
-            </button>
+            <Tooltip key={g.key}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => onReact(m, g.key)}
+                  className={
+                    "flex items-center gap-1 rounded-full border px-2 py-px shadow-sh1 backdrop-blur-md transition-colors " +
+                    (g.reacted_by_me
+                      ? "border-oxblood bg-oxblood-tint/90"
+                      : "border-border/70 bg-elevated/80 hover:border-border-strong")
+                  }
+                >
+                  <span className="text-[12px]">{g.key}</span>
+                  {g.senders.length > 1 && (
+                    <span className="font-mono text-[10px] text-mut">{g.senders.length}</span>
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>{g.senders.join(", ")}</TooltipContent>
+            </Tooltip>
           ))}
         </span>
       )}
@@ -205,16 +219,21 @@ function BubbleAction({
   children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className={
-        "flex h-6 w-6 items-center justify-center rounded-full transition-colors " +
-        (danger ? "bg-danger text-white" : "text-mut hover:bg-oxblood-tint hover:text-oxblood")
-      }
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={title}
+          onClick={onClick}
+          className={
+            "flex h-6 w-6 items-center justify-center rounded-full transition-colors " +
+            (danger ? "bg-danger text-white" : "text-mut hover:bg-oxblood-tint hover:text-oxblood")
+          }
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
   );
 }

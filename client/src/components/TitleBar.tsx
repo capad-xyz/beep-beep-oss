@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Icon } from "@/components/Icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Custom titlebar (the window runs with decorations:false). Windows layout:
 // glyph + wordmark on the left, drag region everywhere, min / max-restore /
@@ -21,20 +22,24 @@ function ControlButton({
   label: string;
 }) {
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className={
-        "flex h-7 w-10 items-center justify-center rounded-md text-mut transition-colors duration-150 " +
-        (danger
-          ? "hover:bg-danger hover:text-white active:bg-danger/90"
-          : "hover:bg-ink/8 hover:text-ink")
-      }
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          onClick={onClick}
+          className={
+            "flex h-7 w-10 items-center justify-center rounded-md text-mut transition-colors duration-150 " +
+            (danger
+              ? "hover:bg-danger hover:text-white active:bg-danger/90"
+              : "hover:bg-ink/8 hover:text-ink")
+          }
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

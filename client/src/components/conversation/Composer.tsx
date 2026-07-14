@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import type { ChatLine } from "@/bindings/ChatLine";
 import { Icon } from "@/components/Icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Composer bar (Dispatch spec): plus (attach) · pill input · accent send circle.
 // The reply/edit context banner and typing line sit directly above it.
@@ -43,14 +44,19 @@ export function Composer({
             </div>
             <div className="truncate text-[13px] text-mut">{context.body.slice(0, 120)}</div>
           </div>
-          <button
-            type="button"
-            title="Cancel"
-            onClick={onCancelContext}
-            className="flex h-6 w-6 flex-none items-center justify-center rounded-full text-mut hover:bg-oxblood-tint hover:text-ink"
-          >
-            <Icon name="close" size={14} />
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                aria-label="Cancel"
+                onClick={onCancelContext}
+                className="flex h-6 w-6 flex-none items-center justify-center rounded-full text-mut hover:bg-oxblood-tint hover:text-ink"
+              >
+                <Icon name="close" size={14} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Cancel</TooltipContent>
+          </Tooltip>
         </div>
       )}
       <form
@@ -70,19 +76,24 @@ export function Composer({
             if (file) onAttach(file);
           }}
         />
-        <button
-          type="button"
-          title="Attach a file"
-          disabled={uploading}
-          onClick={() => fileRef.current?.click()}
-          className="flex h-10 w-10 flex-none items-center justify-center rounded-md text-mut transition-colors hover:bg-elevated hover:text-ink disabled:opacity-50"
-        >
-          {uploading ? (
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-[1.5px] border-mut/40 border-t-mut" />
-          ) : (
-            <Icon name="plus" />
-          )}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label="Attach a file"
+              disabled={uploading}
+              onClick={() => fileRef.current?.click()}
+              className="flex h-10 w-10 flex-none items-center justify-center rounded-md text-mut transition-colors hover:bg-elevated hover:text-ink disabled:opacity-50"
+            >
+              {uploading ? (
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-[1.5px] border-mut/40 border-t-mut" />
+              ) : (
+                <Icon name="plus" />
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{uploading ? "Uploading…" : "Attach a file"}</TooltipContent>
+        </Tooltip>
         <div className="flex flex-1 items-center rounded-full border border-border-strong/70 bg-elevated/75 px-4 py-[11px] shadow-sh1 backdrop-blur-md transition-shadow focus-within:border-oxblood/40 focus-within:shadow-[0_0_0_3px_rgba(143,59,69,0.12)]">
           <input
             value={draft}
@@ -95,15 +106,20 @@ export function Composer({
             <Icon name="emoji" size={17} />
           </span>
         </div>
-        <button
-          type="submit"
-          title={editing ? "Save" : "Send"}
-          disabled={!draft.trim()}
-          className="relative flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh2 transition-opacity hover:opacity-90 disabled:opacity-40"
-        >
-          <span className="absolute inset-x-0 top-0 h-1/2 rounded-t-full bg-gradient-to-b from-white/30 to-transparent" />
-          {editing ? <Icon name="check" size={18} /> : <Icon name="send" size={18} />}
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="submit"
+              aria-label={editing ? "Save" : "Send"}
+              disabled={!draft.trim()}
+              className="relative flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh2 transition-opacity hover:opacity-90 disabled:opacity-40"
+            >
+              <span className="absolute inset-x-0 top-0 h-1/2 rounded-t-full bg-gradient-to-b from-white/30 to-transparent" />
+              {editing ? <Icon name="check" size={18} /> : <Icon name="send" size={18} />}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>{editing ? "Save changes" : "Send"}</TooltipContent>
+        </Tooltip>
       </form>
     </div>
   );

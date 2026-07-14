@@ -28,18 +28,22 @@ export function Rail({
 
   return (
     <div className="flex w-16 flex-none flex-col items-center gap-3 border-r border-border bg-gradient-to-b from-panel to-ground py-4">
-      <button
-        type="button"
-        title="All chats"
-        onClick={() => {
-          onSurface("chats");
-          onAccountFilter(null);
-        }}
-        className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-[12px] bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 transition-shadow hover:shadow-sh2"
-      >
-        <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
-        <Icon name="chat" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => {
+              onSurface("chats");
+              onAccountFilter(null);
+            }}
+            className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-[12px] bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 transition-shadow hover:shadow-sh2"
+          >
+            <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
+            <Icon name="chat" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">All chats</TooltipContent>
+      </Tooltip>
       <div className="my-0.5 h-px w-7 bg-border" />
 
       {accounts.map((a) => {
@@ -83,17 +87,21 @@ export function Rail({
       <RailNav icon="phone" label="Calls" active={surface === "calls"} onClick={() => onSurface("calls")} />
 
       <div className="flex-1" />
-      <button
-        type="button"
-        title="Settings"
-        onClick={() => onSurface("settings")}
-        className={
-          "flex h-10 w-10 items-center justify-center rounded-full transition-colors " +
-          (surface === "settings" ? "bg-oxblood-tint text-oxblood" : "text-mut hover:text-ink")
-        }
-      >
-        <Icon name="gear" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={() => onSurface("settings")}
+            className={
+              "flex h-10 w-10 items-center justify-center rounded-full transition-colors " +
+              (surface === "settings" ? "bg-oxblood-tint text-oxblood" : "text-mut hover:text-ink")
+            }
+          >
+            <Icon name="gear" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">Settings</TooltipContent>
+      </Tooltip>
       <Tooltip>
         <TooltipTrigger className="flex h-9 w-9 items-center justify-center rounded-full bg-[#7b61a8] text-[13px] font-semibold text-white">
           {userInitials}
@@ -116,16 +124,20 @@ function RailNav({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      onClick={onClick}
-      className={
-        "flex h-[42px] w-[42px] items-center justify-center rounded-md transition-colors " +
-        (active ? "bg-oxblood-tint text-oxblood" : "text-mut hover:text-ink")
-      }
-    >
-      <Icon name={icon} />
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          className={
+            "flex h-[42px] w-[42px] items-center justify-center rounded-md transition-colors " +
+            (active ? "bg-oxblood-tint text-oxblood" : "text-mut hover:text-ink")
+          }
+        >
+          <Icon name={icon} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
   );
 }

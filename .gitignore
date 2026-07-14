@@ -50,3 +50,7 @@ Thumbs.db
 
 # Local nuke/reset backups — contain signing keys + tokens, never commit
 .nuke-backup-*/
+
+# Personal Claude Code settings (permission rules etc.) — never commit to the OSS repo
+/.claude/settings.local.json
+/.claude/worktrees/

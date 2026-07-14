@@ -296,6 +296,25 @@ fn spawn_sync_observer(
 /// `generation` is `MatrixState.sync_generation`: we bump it here so the observer
 /// this call spawns can tell whether it still owns the live service (see
 /// `spawn_sync_observer`).
+// ── Phase 2.5 tuning constants (docs/ROADMAP.md) ────────────────────────────
+// Initial values are conservative starting points; perf.log measurements from
+// dogfooding sessions decide their final values — do not tune these by feel.
+
+/// Layer 1: how many top-ranked rooms get their timelines warmed via sliding
+/// sync subscription right after sync starts.
+const WARM_ROOM_COUNT: usize = 12;
+
+/// Layer 2: a freshly opened conversation should show at least this many
+/// messages without the user clicking "load older".
+const AUTO_BACKFILL_TARGET_LINES: usize = 30;
+
+/// Layer 2: events fetched per automatic back-pagination round.
+const AUTO_BACKFILL_PAGE: u16 = 50;
+
+/// Layer 2: hard cap on automatic rounds, so a sparse room (many state events,
+/// few messages) can't turn one open into an unbounded history crawl.
+const AUTO_BACKFILL_MAX_ROUNDS: u32 = 3;
+
 async fn start_sync(
     client: &Client,
     app: tauri::AppHandle,
@@ -319,7 +338,90 @@ async fn start_sync(
     // Ordering::SeqCst: the observer reads this from another task, and we want the
     // bump to be visible before the observer it spawns runs its first check.
     let my_gen = generation.fetch_add(1, Ordering::SeqCst) + 1;
+    let warm_generation = generation.clone();
     spawn_sync_observer(sync_service.clone(), generation, my_gen, app.clone());
+
+    // ── Phase 2.5 Layer 1: cross-room timeline warming ──────────────────────
+    // Subscribing a room to sliding sync makes the server stream its recent
+    // timeline into the persistent event cache WITHOUT the room being opened,
+    // so clicking a warmed room paints real history instantly instead of a
+    // one-event preview. One batched subscribe_to_rooms call (a single sliding
+    // sync request), not per-room joins — nothing here sends anything to a room.
+    // WARM_ROOM_COUNT is tuned from perf.log (docs/ROADMAP.md Phase 2.5).
+    {
+        let client = client.clone();
+        let app = app.clone();
+        let sync_service = sync_service.clone();
+        tauri::async_runtime::spawn(async move {
+            use matrix_sdk::ruma::events::tag::TagName;
+            use matrix_sdk::RoomState;
+
+            // Wait until rooms exist: a restored session has them from the
+            // store immediately; a first login only after the initial sync.
+            // Bounded — an empty account simply never warms this session.
+            let mut waited_ms = 0u64;
+            loop {
+                if warm_generation.load(Ordering::SeqCst) != my_gen {
+                    return;
+                }
+                if client.rooms().iter().any(|r| !r.is_space()) {
+                    break;
+                }
+                if waited_ms >= 15_000 {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                waited_ms += 500;
+            }
+            // Let the first sync burst settle so recency ranking is meaningful.
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            if warm_generation.load(Ordering::SeqCst) != my_gen {
+                return;
+            }
+
+            let started = std::time::Instant::now();
+            // Rank warm candidates: pinned first, then unread, then most
+            // recent. All local reads (cached state + event cache), no network.
+            let mut candidates = Vec::new();
+            for room in client.rooms() {
+                if room.is_space() || room.state() != RoomState::Joined {
+                    continue;
+                }
+                let (pinned, archived) = match room.tags().await {
+                    Ok(Some(tags)) => (
+                        tags.contains_key(&TagName::Favorite),
+                        tags.contains_key(&TagName::LowPriority),
+                    ),
+                    _ => (false, false),
+                };
+                if archived {
+                    continue;
+                }
+                let unread = room.unread_notification_counts().notification_count > 0;
+                let ts = latest_message_local(&room).await.map(|(_, ts)| ts).unwrap_or(0.0);
+                candidates.push((room.room_id().to_owned(), pinned, unread, ts));
+            }
+            candidates.sort_by(|a, b| {
+                b.1.cmp(&a.1)
+                    .then(b.2.cmp(&a.2))
+                    .then(b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal))
+            });
+            candidates.truncate(WARM_ROOM_COUNT);
+            if candidates.is_empty() {
+                return;
+            }
+
+            let ids: Vec<_> = candidates.into_iter().map(|(id, ..)| id).collect();
+            let id_refs: Vec<&matrix_sdk::ruma::RoomId> =
+                ids.iter().map(|id| id.as_ref()).collect();
+            sync_service.room_list_service().subscribe_to_rooms(&id_refs).await;
+            crate::perf::note(
+                &app,
+                "warm-rooms",
+                &format!("count={} in {}ms", ids.len(), started.elapsed().as_millis()),
+            );
+        });
+    }
 
     // Live "X is typing…" — typing events arrive via sliding sync's typing
     // extension; resolve display names and forward to the UI per room.
@@ -2203,11 +2305,13 @@ pub async fn open_room_timeline(
     // Bounded: a room whose timeline never finishes building (seen with the
     // bridge's status-broadcast portal re-paginating forever) would otherwise
     // hold `open_timeline_lock` for good and wedge every later open behind it.
+    let build_started = std::time::Instant::now();
     let timeline = tokio::time::timeout(Duration::from_secs(15), room.timeline())
         .await
         .map_err(|_| "timed out preparing this conversation".to_string())?
         .map_err(|e| e.to_string())?;
     let timeline = Arc::new(timeline);
+    let build_ms = build_started.elapsed().as_millis();
 
     // Claim a new timeline generation and store this as THE open timeline. Bumping
     // the counter first retires any previous room's diff task before we replace
@@ -2224,6 +2328,27 @@ pub async fn open_room_timeline(
     // is a return value and not an emission).
     let room_for_map = room.clone();
     let lines = map_timeline_items(&room_for_map, &initial_items).await;
+
+    // Phase 2.5 measurement: how fast the open was and how much history the
+    // cache had ready. These lines are what tunes WARM_ROOM_COUNT and the
+    // AUTO_BACKFILL_* constants — see perf.rs.
+    crate::perf::note(
+        &app,
+        "open-timeline",
+        &format!("room={rid} build_ms={build_ms} initial_lines={}", lines.len()),
+    );
+
+    // ── Phase 2.5 Layer 2: within-room auto-backfill ─────────────────────────
+    // If the cache only had a shallow window for this room, deepen it in the
+    // background so the user isn't clicking "load older" for history WhatsApp
+    // Desktop would just show. Older events arrive as diffs, so the open diff
+    // task below repaints the UI live; the same generation guard retires this
+    // the moment another room is opened. Bounded by AUTO_BACKFILL_MAX_ROUNDS.
+    let needs_backfill = lines.len() < AUTO_BACKFILL_TARGET_LINES;
+    let app_for_backfill = app.clone();
+    let timeline_for_backfill = timeline.clone();
+    let generation_for_backfill = state.timeline_generation.clone();
+    let room_id_for_backfill = room_id.clone();
 
     // Diff-forwarding task: on each diff batch we IGNORE the diff contents and
     // just re-read + re-map the current items, because the frontend replaces its
@@ -2265,6 +2390,42 @@ pub async fn open_room_timeline(
             );
         }
     });
+
+    if needs_backfill {
+        tauri::async_runtime::spawn(async move {
+            let started = std::time::Instant::now();
+            let mut rounds = 0u32;
+            let mut reached_start = false;
+            while rounds < AUTO_BACKFILL_MAX_ROUNDS {
+                // Another room was opened / this one closed — stop paginating.
+                if generation_for_backfill.load(Ordering::SeqCst) != my_gen {
+                    return;
+                }
+                match timeline_for_backfill.paginate_backwards(AUTO_BACKFILL_PAGE).await {
+                    Ok(start) => {
+                        rounds += 1;
+                        reached_start = start;
+                        if start
+                            || timeline_for_backfill.items().await.len()
+                                >= AUTO_BACKFILL_TARGET_LINES
+                        {
+                            break;
+                        }
+                    }
+                    // Best-effort: the manual "load older" control still exists.
+                    Err(_) => break,
+                }
+            }
+            crate::perf::note(
+                &app_for_backfill,
+                "auto-backfill",
+                &format!(
+                    "room={room_id_for_backfill} rounds={rounds} reached_start={reached_start} in {}ms",
+                    started.elapsed().as_millis()
+                ),
+            );
+        });
+    }
 
     Ok(lines)
 }

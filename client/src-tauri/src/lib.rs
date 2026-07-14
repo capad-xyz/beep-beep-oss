@@ -17,6 +17,7 @@
 // mod ai;
 mod matrix;
 mod panic_guard;
+mod perf;
 
 use matrix::MatrixState;
 

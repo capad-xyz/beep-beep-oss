@@ -144,19 +144,21 @@ export function MessageBubble({
 
       {/* Hover actions — only for confirmed (server-acked) messages. Placed
           BESIDE the bubble (vertically centered, outside its edge) so the pill
-          never covers the message above — grouped rows pack too tight for the
-          old overhanging position. Revealed with opacity + a small drift
-          (display can't animate — `hidden group-hover:flex` snapped). */}
+          never covers the message above. The bubble→pill gap is PADDING on
+          this hoverable wrapper (not margin): crossing it keeps group-hover
+          alive, so the pill stays clickable — margin left a dead zone that
+          dropped the hover mid-crossing. Revealed with opacity + drift. */}
       {m.event_id && (
         <div
           className={
-            "glass-float absolute top-1/2 z-[2] flex -translate-y-1/2 items-center gap-0.5 rounded-full border border-border/60 px-1 py-0.5 " +
+            "absolute top-1/2 z-[2] flex -translate-y-1/2 items-center " +
             "pointer-events-none opacity-0 transition-[opacity,translate] duration-150 ease-out group-hover:pointer-events-auto group-hover:opacity-100 " +
             (own
-              ? "right-full mr-1.5 translate-x-1 group-hover:translate-x-0"
-              : "left-full ml-1.5 -translate-x-1 group-hover:translate-x-0")
+              ? "right-full pr-1.5 translate-x-1 group-hover:translate-x-0"
+              : "left-full pl-1.5 -translate-x-1 group-hover:translate-x-0")
           }
         >
+        <div className="glass-float flex items-center gap-0.5 rounded-full border border-border/60 px-1 py-0.5">
           <BubbleAction title="React" onClick={() => setPickerOpen((v) => !v)}>
             <Icon name="emoji" size={14} />
           </BubbleAction>
@@ -185,6 +187,7 @@ export function MessageBubble({
               <Icon name="close" size={14} />
             </BubbleAction>
           )}
+        </div>
         </div>
       )}
 

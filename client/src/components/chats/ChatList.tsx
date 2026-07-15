@@ -66,7 +66,7 @@ export function ChatList({
   }
 
   const chip = (on: boolean) =>
-    "micro rounded-full px-[11px] py-1.5 transition-colors " +
+    "micro rounded-full px-[11px] py-1.5 " +
     (on
       ? "bg-ink text-white"
       : "border border-border bg-elevated text-mut hover:text-ink");
@@ -87,7 +87,7 @@ export function ChatList({
                 <button
                   type="button"
                   onClick={onCompose}
-                  className="relative flex h-[34px] w-[34px] items-center justify-center overflow-hidden rounded-md bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 transition-shadow hover:shadow-sh2"
+                  className="relative flex h-[34px] w-[34px] items-center justify-center overflow-hidden rounded-md bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 hover:shadow-sh2"
                 >
                   <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
                   <Icon name="compose" size={17} />

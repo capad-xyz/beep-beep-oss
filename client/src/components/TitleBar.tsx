@@ -29,7 +29,7 @@ function ControlButton({
           aria-label={label}
           onClick={onClick}
           className={
-            "flex h-7 w-10 items-center justify-center rounded-md text-mut transition-colors duration-150 " +
+            "flex h-7 w-10 items-center justify-center rounded-md text-mut " +
             (danger
               ? "hover:bg-danger hover:text-white active:bg-danger/90"
               : "hover:bg-ink/8 hover:text-ink")
@@ -69,7 +69,7 @@ export function TitleBar() {
     <div
       data-tauri-drag-region
       className={
-        "glass relative z-20 flex h-11 flex-none items-center border-b border-border/70 select-none transition-opacity duration-200 " +
+        "glass relative z-20 flex h-11 flex-none items-center border-b border-border/70 select-none duration-200 " +
         (focused ? "" : "opacity-75")
       }
     >

@@ -17,7 +17,7 @@ export function TimelineErrorState({ detail, onRetry }: { detail: string; onRetr
       <button
         type="button"
         onClick={onRetry}
-        className="rounded-full bg-oxblood px-5 py-2 text-sm font-semibold text-white shadow-sh1 transition-opacity hover:opacity-90"
+        className="rounded-full bg-oxblood px-5 py-2 text-sm font-semibold text-white shadow-sh1 hover:opacity-90"
       >
         Retry
       </button>

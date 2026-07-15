@@ -92,7 +92,7 @@ export function InfoDrawer({
               type="button"
               onClick={r.onClick}
               className={
-                "flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-panel " +
+                "flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-panel " +
                 (i < rows.length - 1 ? "border-b border-border" : "")
               }
             >

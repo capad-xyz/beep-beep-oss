@@ -35,7 +35,7 @@ export function NewChatModal({
   }, [rooms, query, net]);
 
   const chip = (on: boolean) =>
-    "micro flex items-center gap-1.5 rounded-full px-[11px] py-1.5 transition-colors " +
+    "micro flex items-center gap-1.5 rounded-full px-[11px] py-1.5 " +
     (on ? "bg-ink text-white" : "border border-border bg-elevated text-mut hover:text-ink");
 
   return (
@@ -88,7 +88,7 @@ export function NewChatModal({
                   onOpenChange(false);
                   onOpenRoom(r);
                 }}
-                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-panel"
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-panel"
               >
                 <RoomAvatar id={r.id} label={label} size={42} />
                 <span className="min-w-0 flex-1">

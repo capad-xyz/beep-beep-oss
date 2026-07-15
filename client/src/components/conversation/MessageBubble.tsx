@@ -124,7 +124,7 @@ export function MessageBubble({
                   type="button"
                   onClick={() => onReact(m, g.key)}
                   className={
-                    "flex items-center gap-1 rounded-full border px-2 py-px shadow-sh1 backdrop-blur-md transition-colors " +
+                    "flex items-center gap-1 rounded-full border px-2 py-px shadow-sh1 backdrop-blur-md " +
                     (g.reacted_by_me
                       ? "border-oxblood bg-oxblood-tint/90"
                       : "border-border/70 bg-elevated/80 hover:border-border-strong")
@@ -202,7 +202,7 @@ export function MessageBubble({
             <button
               key={k}
               type="button"
-              className="rounded-full px-1 text-[15px] transition-transform hover:scale-125"
+              className="rounded-full px-1 text-[15px] hover:scale-125"
               onClick={() => {
                 setPickerOpen(false);
                 onReact(m, k);
@@ -236,7 +236,7 @@ function BubbleAction({
           aria-label={title}
           onClick={onClick}
           className={
-            "flex h-6 w-6 items-center justify-center rounded-full transition-colors " +
+            "flex h-6 w-6 items-center justify-center rounded-full " +
             (danger ? "bg-danger text-white" : "text-mut hover:bg-oxblood-tint hover:text-oxblood")
           }
         >

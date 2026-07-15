@@ -94,7 +94,7 @@ export function Onboarding({
         <button
           type="submit"
           disabled={busy || !username.trim() || !password}
-          className="mt-1 flex h-11 items-center justify-center gap-2 rounded-full bg-oxblood text-sm font-semibold text-white shadow-sh1 transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="mt-1 flex h-11 items-center justify-center gap-2 rounded-full bg-oxblood text-sm font-semibold text-white shadow-sh1 hover:opacity-90 disabled:opacity-50"
         >
           {busy && (
             <span className="inline-block h-4 w-4 animate-spin rounded-full border-[1.5px] border-white/40 border-t-white" />

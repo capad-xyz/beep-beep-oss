@@ -110,7 +110,7 @@ export function ConversationPane(props: {
                 aria-label="Conversation info"
                 onClick={props.onToggleDrawer}
                 className={
-                  "flex h-9 w-9 items-center justify-center rounded-md transition-colors " +
+                  "flex h-9 w-9 items-center justify-center rounded-md " +
                   (props.drawerOpen ? "bg-oxblood-tint text-oxblood" : "hover:bg-elevated")
                 }
               >

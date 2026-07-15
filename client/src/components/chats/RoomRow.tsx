@@ -31,7 +31,7 @@ export function RoomRow({
           type="button"
           onClick={() => onOpen(room)}
           className={
-            "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left transition-colors " +
+            "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left " +
             (active ? "bg-oxblood-tint" : "hover:bg-elevated")
           }
         >

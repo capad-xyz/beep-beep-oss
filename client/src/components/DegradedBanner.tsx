@@ -30,7 +30,7 @@ export function DegradedBanner() {
               setRestarting(true);
               restartApp().catch(() => setRestarting(false));
             }}
-            className="micro rounded-full bg-warn/25 px-3 py-0.5 font-semibold transition-colors hover:bg-warn/40 disabled:opacity-60"
+            className="micro rounded-full bg-warn/25 px-3 py-0.5 font-semibold hover:bg-warn/40 disabled:opacity-60"
           >
             {restarting ? "Refreshing…" : "Refresh now"}
           </button>

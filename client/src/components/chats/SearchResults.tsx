@@ -38,7 +38,7 @@ export function SearchResults({
             type="button"
             disabled={!room}
             onClick={() => room && onOpen(room)}
-            className="flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left transition-colors hover:bg-elevated disabled:opacity-60"
+            className="flex w-full flex-col gap-0.5 rounded-md px-3 py-2 text-left hover:bg-elevated disabled:opacity-60"
           >
             <span className="flex items-center gap-2">
               <span className="flex-1 truncate text-[14px] font-semibold">

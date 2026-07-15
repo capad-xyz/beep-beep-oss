@@ -83,7 +83,7 @@ export function Composer({
               aria-label="Attach a file"
               disabled={uploading}
               onClick={() => fileRef.current?.click()}
-              className="flex h-10 w-10 flex-none items-center justify-center rounded-md text-mut transition-colors hover:bg-elevated hover:text-ink disabled:opacity-50"
+              className="flex h-10 w-10 flex-none items-center justify-center rounded-md text-mut hover:bg-elevated hover:text-ink disabled:opacity-50"
             >
               {uploading ? (
                 <span className="inline-block h-4 w-4 animate-spin rounded-full border-[1.5px] border-mut/40 border-t-mut" />
@@ -112,7 +112,7 @@ export function Composer({
               type="submit"
               aria-label={editing ? "Save" : "Send"}
               disabled={!draft.trim()}
-              className="relative flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh2 transition-opacity hover:opacity-90 disabled:opacity-40"
+              className="relative flex h-11 w-11 flex-none items-center justify-center overflow-hidden rounded-full bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh2 hover:opacity-90 disabled:opacity-40"
             >
               <span className="absolute inset-x-0 top-0 h-1/2 rounded-t-full bg-gradient-to-b from-white/30 to-transparent" />
               {editing ? <Icon name="check" size={18} /> : <Icon name="send" size={18} />}

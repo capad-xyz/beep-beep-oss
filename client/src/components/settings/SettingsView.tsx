@@ -41,7 +41,7 @@ export function SettingsView({
               type="button"
               onClick={() => setSection(n.id)}
               className={
-                "flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm transition-colors " +
+                "flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm " +
                 (on ? "bg-elevated font-semibold text-ink shadow-sh1" : "font-medium text-mut hover:text-ink")
               }
             >
@@ -56,7 +56,7 @@ export function SettingsView({
         <button
           type="button"
           onClick={onSignOut}
-          className="flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-danger transition-colors hover:bg-danger/10"
+          className="flex items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm text-danger hover:bg-danger/10"
         >
           <Icon name="logout" size={17} /> Sign out
         </button>
@@ -99,7 +99,7 @@ export function SettingsView({
               <button
                 type="button"
                 onClick={onAddNetwork}
-                className="flex items-center justify-center gap-2 rounded-lg border-[1.5px] border-dashed border-border-strong p-4 text-sm font-medium text-oxblood transition-colors hover:border-oxblood hover:bg-oxblood-tint"
+                className="flex items-center justify-center gap-2 rounded-lg border-[1.5px] border-dashed border-border-strong p-4 text-sm font-medium text-oxblood hover:border-oxblood hover:bg-oxblood-tint"
               >
                 <Icon name="plus" size={16} /> Add another network
               </button>

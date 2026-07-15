@@ -36,7 +36,7 @@ export function Rail({
               onSurface("chats");
               onAccountFilter(null);
             }}
-            className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-[12px] bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 transition-shadow hover:shadow-sh2"
+            className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-[12px] bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 hover:shadow-sh2"
           >
             <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
             <Icon name="chat" />
@@ -63,7 +63,7 @@ export function Rail({
               )}
               <span
                 className={
-                  "relative flex h-[42px] w-[42px] items-center justify-center rounded-full font-mono text-xs font-semibold text-white bg-net-whatsapp shadow-sh1 transition-all duration-150 " +
+                  "relative flex h-[42px] w-[42px] items-center justify-center rounded-full font-mono text-xs font-semibold text-white bg-net-whatsapp shadow-sh1 transition-[opacity,box-shadow] duration-200 ease-out " +
                   (active
                     ? "ring-2 ring-oxblood/35 ring-offset-2 ring-offset-panel"
                     : "opacity-90 hover:opacity-100 hover:shadow-sh2")
@@ -93,7 +93,7 @@ export function Rail({
             type="button"
             onClick={() => onSurface("settings")}
             className={
-              "flex h-10 w-10 items-center justify-center rounded-full transition-colors " +
+              "flex h-10 w-10 items-center justify-center rounded-full " +
               (surface === "settings" ? "bg-oxblood-tint text-oxblood" : "text-mut hover:text-ink")
             }
           >
@@ -130,7 +130,7 @@ function RailNav({
           type="button"
           onClick={onClick}
           className={
-            "flex h-[42px] w-[42px] items-center justify-center rounded-md transition-colors " +
+            "flex h-[42px] w-[42px] items-center justify-center rounded-md " +
             (active ? "bg-oxblood-tint text-oxblood" : "text-mut hover:text-ink")
           }
         >

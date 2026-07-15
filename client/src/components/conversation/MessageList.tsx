@@ -63,7 +63,7 @@ export function MessageList({
               type="button"
               disabled={loadingOlder}
               onClick={onLoadOlder}
-              className="micro-sm glass-float rounded-full border border-border/60 px-3 py-1 text-mut transition-colors hover:text-ink disabled:opacity-60"
+              className="micro-sm glass-float rounded-full border border-border/60 px-3 py-1 text-mut hover:text-ink disabled:opacity-60"
             >
               {loadingOlder ? "Loading…" : "Load older"}
             </button>

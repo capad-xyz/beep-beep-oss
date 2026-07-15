@@ -23,13 +23,15 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 
-# ⚠️ Pin the CURRENT version before building: `cargo add matrix-sdk`.
-# The version below is indicative — the SDK moves fast. Features:
+# Pinned to the matrix-rust-sdk main rev that merged PR #6757 (the OrderTracker
+# / linked_chunk "The chunk is not found" fix our failing test produced — see
+# issue #5416). Move this pin forward deliberately; return to a crates.io
+# version at the next SDK release that contains the fix. Features:
 #   e2e-encryption → end-to-end encryption support
 #   sqlite         → persist session + crypto keys on disk (fast restarts)
-matrix-sdk = { version = "0.18", features = ["e2e-encryption", "sqlite", "bundled-sqlite"] }
+matrix-sdk = { git = "https://github.com/matrix-org/matrix-rust-sdk", rev = "1c74383388c0c526b93c99eab8c0f022c69cfcf3", features = ["e2e-encryption", "sqlite", "bundled-sqlite"] }
 # Simplified Sliding Sync engine (SyncService / RoomListService) — the "no-delay" sync.
-matrix-sdk-ui = "0.18"
+matrix-sdk-ui = { git = "https://github.com/matrix-org/matrix-rust-sdk", rev = "1c74383388c0c526b93c99eab8c0f022c69cfcf3" }
 
 # The Timeline diff stream yields `imbl::Vector<Arc<TimelineItem>>` and a
 # `Stream` of `VectorDiff`s; we name both to map items → ChatLines and to drive

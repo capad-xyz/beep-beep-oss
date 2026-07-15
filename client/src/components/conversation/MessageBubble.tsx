@@ -142,12 +142,15 @@ export function MessageBubble({
         </span>
       )}
 
-      {/* Hover actions — only for confirmed (server-acked) messages. */}
+      {/* Hover actions — only for confirmed (server-acked) messages. Placed
+          BESIDE the bubble (vertically centered, outside its edge) so the pill
+          never covers the message above — grouped rows pack too tight for the
+          old overhanging position. */}
       {m.event_id && (
         <div
           className={
-            "glass-float absolute -top-3 z-[2] hidden items-center gap-0.5 rounded-full border border-border/60 px-1 py-0.5 group-hover:flex " +
-            (own ? "right-2" : "left-2")
+            "glass-float absolute top-1/2 z-[2] hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-border/60 px-1 py-0.5 group-hover:flex " +
+            (own ? "right-full mr-1.5" : "left-full ml-1.5")
           }
         >
           <BubbleAction title="React" onClick={() => setPickerOpen((v) => !v)}>
@@ -184,8 +187,8 @@ export function MessageBubble({
       {pickerOpen && m.event_id && (
         <div
           className={
-            "glass-float absolute -top-12 z-[3] flex gap-0.5 rounded-full border border-border/60 px-1.5 py-1 " +
-            (own ? "right-2" : "left-2")
+            "glass-float absolute bottom-[calc(50%+20px)] z-[3] flex gap-0.5 rounded-full border border-border/60 px-1.5 py-1 " +
+            (own ? "right-full mr-1.5" : "left-full ml-1.5")
           }
         >
           {QUICK_EMOJI.map((k) => (

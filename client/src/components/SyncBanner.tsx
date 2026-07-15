@@ -1,9 +1,34 @@
+import { useEffect, useState } from "react";
+
 // Prominent full-width sync-health banner, directly under the titlebar.
 // `state` is the raw "sync-state" payload (null when running = hidden).
 // "terminated" and "reconnecting" both read as actively recovering.
+//
+// DEBOUNCED: sliding sync flaps running↔offline for a beat around server
+// restarts and network blips; showing every blip strobes the banner. An
+// unhealthy state must persist SHOW_DELAY_MS before the banner appears —
+// recovery still hides it instantly (good news needs no debounce).
+const SHOW_DELAY_MS = 1500;
+
 export function SyncBanner({ state }: { state: string | null }) {
-  if (!state) return null;
-  const offline = state === "offline";
+  const [shown, setShown] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!state) {
+      setShown(null); // healthy → hide immediately
+      return;
+    }
+    if (shown) {
+      setShown(state); // already visible → track the label without delay
+      return;
+    }
+    const t = setTimeout(() => setShown(state), SHOW_DELAY_MS);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `shown` guards entry only
+  }, [state]);
+
+  if (!shown) return null;
+  const offline = shown === "offline";
   return (
     <div
       className={

@@ -145,12 +145,16 @@ export function MessageBubble({
       {/* Hover actions — only for confirmed (server-acked) messages. Placed
           BESIDE the bubble (vertically centered, outside its edge) so the pill
           never covers the message above — grouped rows pack too tight for the
-          old overhanging position. */}
+          old overhanging position. Revealed with opacity + a small drift
+          (display can't animate — `hidden group-hover:flex` snapped). */}
       {m.event_id && (
         <div
           className={
-            "glass-float absolute top-1/2 z-[2] hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-border/60 px-1 py-0.5 group-hover:flex " +
-            (own ? "right-full mr-1.5" : "left-full ml-1.5")
+            "glass-float absolute top-1/2 z-[2] flex -translate-y-1/2 items-center gap-0.5 rounded-full border border-border/60 px-1 py-0.5 " +
+            "pointer-events-none opacity-0 transition-[opacity,translate] duration-150 ease-out group-hover:pointer-events-auto group-hover:opacity-100 " +
+            (own
+              ? "right-full mr-1.5 translate-x-1 group-hover:translate-x-0"
+              : "left-full ml-1.5 -translate-x-1 group-hover:translate-x-0")
           }
         >
           <BubbleAction title="React" onClick={() => setPickerOpen((v) => !v)}>
@@ -187,7 +191,7 @@ export function MessageBubble({
       {pickerOpen && m.event_id && (
         <div
           className={
-            "glass-float absolute bottom-[calc(50%+20px)] z-[3] flex gap-0.5 rounded-full border border-border/60 px-1.5 py-1 " +
+            "glass-float absolute bottom-[calc(50%+20px)] z-[3] flex animate-in fade-in-0 zoom-in-95 gap-0.5 rounded-full border border-border/60 px-1.5 py-1 duration-150 " +
             (own ? "right-full mr-1.5" : "left-full ml-1.5")
           }
         >

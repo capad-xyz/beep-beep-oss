@@ -127,14 +127,32 @@
   button:disabled, [role="button"][aria-disabled="true"] {
     cursor: default;
   }
-  /* Press feedback: a quick, subtle sink on every enabled button. Transform
-     only — never layout. Squares/circles compress a touch; it reads tactile. */
+  /* Press feedback + hover smoothness on every button. One baseline
+     transition covers the properties hover states actually change (colors,
+     shadow, opacity) with a soft ease-out, plus the quick press transform.
+     Elements that declare Tailwind transition utilities override this —
+     that's fine, the durations are in the same family. Never layout props. */
   button {
     -webkit-tap-highlight-color: transparent;
-    transition: transform 120ms cubic-bezier(0.2, 0, 0, 1);
+    transition:
+      transform 120ms cubic-bezier(0.2, 0, 0, 1),
+      background-color 180ms ease-out,
+      color 180ms ease-out,
+      border-color 180ms ease-out,
+      box-shadow 200ms ease-out,
+      opacity 180ms ease-out;
   }
   button:not(:disabled):active {
     transform: scale(0.94);
+  }
+  /* Links and other clickables get the color family too. */
+  a, [role="button"], summary {
+    transition:
+      background-color 180ms ease-out,
+      color 180ms ease-out,
+      border-color 180ms ease-out,
+      box-shadow 200ms ease-out,
+      opacity 180ms ease-out;
   }
   /* Keyboard affordance: a visible ring only for focus-visible, so mouse
      clicks stay clean but tabbing is never lost. */
@@ -147,7 +165,7 @@
     outline: none; /* fields show focus via their container styling */
   }
   @media (prefers-reduced-motion: reduce) {
-    button { transition: none; }
+    button, a, [role="button"], summary { transition: none; }
     button:not(:disabled):active { transform: none; }
   }
 }

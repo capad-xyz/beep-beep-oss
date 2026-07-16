@@ -1,10 +1,9 @@
 import type { SVGProps } from "react";
 
-// Dooper placeholder brand mark: a rounded speech bubble (incoming tail,
-// bottom-left) with a bold "D" knocked out of it — the letter shows the chip's
-// color through it. Drawn in currentColor with an even-odd fill so it inherits
-// whatever it sits on (white bubble on the oxblood chip). Three even-odd
-// contours: bubble body, the D silhouette (hole), the D counter (fill again).
+// Dooper placeholder brand mark (the initial one): a rounded speech bubble with
+// an incoming tail (bottom-left) and a "D" knocked out of it, so the chip's
+// color shows through the letter. Drawn in currentColor with an even-odd fill
+// so it inherits whatever it sits on (white bubble on the oxblood chip).
 // Purely a placeholder until a real identity exists.
 export function Logo({ size = 24, ...rest }: { size?: number } & SVGProps<SVGSVGElement>) {
   return (
@@ -17,7 +16,7 @@ export function Logo({ size = 24, ...rest }: { size?: number } & SVGProps<SVGSVG
       aria-hidden
       {...rest}
     >
-      <path d="M9 3H23A6 6 0 0 1 29 9V18A6 6 0 0 1 23 24H12L6.5 29L8.5 24A6 6 0 0 1 3 18V9A6 6 0 0 1 9 3ZM11 7.5V19.5H15A6 6 0 0 0 15 7.5ZM14 10.5V16.5H15A3 3 0 0 0 15 10.5Z" />
+      <path d="M10.5 4h11a6.5 6.5 0 0 1 6.5 6.5v6a6.5 6.5 0 0 1-6.5 6.5H12l-5 5.5 2-5.5a6.5 6.5 0 0 1-5-6.5v-6A6.5 6.5 0 0 1 10.5 4Zm2 5.2v13.6h4.2a6.8 6.8 0 0 0 0-13.6h-4.2Z" />
     </svg>
   );
 }

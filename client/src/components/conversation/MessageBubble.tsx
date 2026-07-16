@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatLine } from "@/bindings/ChatLine";
 import { formatTime } from "@/lib/format";
 import { Icon } from "@/components/Icon";
@@ -31,6 +31,31 @@ export function MessageBubble({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const pickerRef = useRef<HTMLDivElement | null>(null);
+
+  // Dismiss the emoji picker on any click outside it (and on Escape). Without
+  // this it only closed by picking an emoji or re-clicking React, so clicking
+  // elsewhere left it hanging. Pointerdown (not click) so it closes before a
+  // click on another target lands; capture phase so nothing can stop it.
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement;
+      // Ignore clicks on the picker itself and on the React toggle (so the
+      // toggle keeps working — otherwise this close would race its re-open).
+      if (pickerRef.current?.contains(t) || t.closest("[data-picker-trigger]")) return;
+      setPickerOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPickerOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [pickerOpen]);
 
   const meta = (
     <span className="ml-1.5 inline-flex flex-none items-center gap-[3px] self-end whitespace-nowrap font-mono text-[10px] text-faint">
@@ -159,7 +184,7 @@ export function MessageBubble({
           }
         >
         <div className="glass-float flex items-center gap-0.5 rounded-full border border-border/60 px-1 py-0.5">
-          <BubbleAction title="React" onClick={() => setPickerOpen((v) => !v)}>
+          <BubbleAction title="React" data-picker-trigger onClick={() => setPickerOpen((v) => !v)}>
             <Icon name="emoji" size={14} />
           </BubbleAction>
           <BubbleAction title="Reply" onClick={() => onReply(m)}>
@@ -193,6 +218,7 @@ export function MessageBubble({
 
       {pickerOpen && m.event_id && (
         <div
+          ref={pickerRef}
           className={
             "glass-float absolute bottom-[calc(50%+20px)] z-[3] flex animate-in fade-in-0 zoom-in-95 gap-0.5 rounded-full border border-border/60 px-1.5 py-1 duration-150 " +
             (own ? "right-full mr-1.5" : "left-full ml-1.5")
@@ -222,12 +248,13 @@ function BubbleAction({
   onClick,
   danger,
   children,
+  ...rest
 }: {
   title: string;
   onClick: () => void;
   danger?: boolean;
   children: React.ReactNode;
-}) {
+} & React.ComponentProps<"button">) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -235,6 +262,7 @@ function BubbleAction({
           type="button"
           aria-label={title}
           onClick={onClick}
+          {...rest}
           className={
             "flex h-6 w-6 items-center justify-center rounded-full " +
             (danger ? "bg-danger text-white" : "text-mut hover:bg-oxblood-tint hover:text-oxblood")

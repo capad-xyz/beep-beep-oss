@@ -32,6 +32,20 @@ export function MessageBubble({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const pickerRef = useRef<HTMLDivElement | null>(null);
+  const closeTimer = useRef<number | undefined>(undefined);
+
+  // Close-on-leave with a grace delay: leaving the actions cluster schedules a
+  // close; re-entering (e.g. moving pill→picker inside the cluster) cancels it.
+  const cancelClose = () => {
+    if (closeTimer.current !== undefined) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = undefined;
+    }
+  };
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimer.current = window.setTimeout(() => setPickerOpen(false), 220);
+  };
 
   // Dismiss the emoji picker on any click outside it (and on Escape). Without
   // this it only closed by picking an emoji or re-clicking React, so clicking
@@ -54,6 +68,7 @@ export function MessageBubble({
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKey);
+      cancelClose();
     };
   }, [pickerOpen]);
 
@@ -167,76 +182,75 @@ export function MessageBubble({
         </span>
       )}
 
-      {/* Hover actions — only for confirmed (server-acked) messages. Placed
-          BESIDE the bubble (vertically centered, outside its edge) so the pill
-          never covers the message above. The bubble→pill gap is PADDING on
-          this hoverable wrapper (not margin): crossing it keeps group-hover
-          alive, so the pill stays clickable — margin left a dead zone that
-          dropped the hover mid-crossing. Revealed with opacity + drift. */}
+      {/* Actions cluster — beside the bubble (vertically centered, outside its
+          edge, so it never covers the message above). The hover pill and the
+          emoji picker live in ONE flex column with a bridged gap, so moving
+          between them never leaves the cluster. Revealed on message hover;
+          while the picker is open the cluster is pinned visible. Leaving the
+          cluster schedules a close (grace delay); double-click closes now. */}
       {m.event_id && (
         <div
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+          onDoubleClick={() => setPickerOpen(false)}
           className={
-            "absolute top-1/2 z-[2] flex -translate-y-1/2 items-center " +
-            "pointer-events-none opacity-0 transition-[opacity,translate] duration-150 ease-out group-hover:pointer-events-auto group-hover:opacity-100 " +
-            (own
-              ? "right-full pr-1.5 translate-x-1 group-hover:translate-x-0"
-              : "left-full pl-1.5 -translate-x-1 group-hover:translate-x-0")
+            "absolute top-1/2 z-[3] flex -translate-y-1/2 flex-col gap-1.5 transition-opacity duration-150 ease-out " +
+            (own ? "right-full items-end pr-1.5" : "left-full items-start pl-1.5") +
+            (pickerOpen
+              ? " opacity-100 pointer-events-auto"
+              : " pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100")
           }
         >
-        <div className="glass-float flex items-center gap-0.5 rounded-full border border-border/60 px-1 py-0.5">
-          <BubbleAction title="React" data-picker-trigger onClick={() => setPickerOpen((v) => !v)}>
-            <Icon name="emoji" size={14} />
-          </BubbleAction>
-          <BubbleAction title="Reply" onClick={() => onReply(m)}>
-            <Icon name="back" size={14} />
-          </BubbleAction>
-          {own && (
-            <BubbleAction title="Edit" onClick={() => onEdit(m)}>
-              <Icon name="compose" size={14} />
-            </BubbleAction>
-          )}
-          {own && (
-            <BubbleAction
-              title={confirmDelete ? "Click again to delete" : "Delete"}
-              danger={confirmDelete}
-              onClick={() => {
-                if (confirmDelete) {
-                  setConfirmDelete(false);
-                  onDelete(m);
-                } else {
-                  setConfirmDelete(true);
-                  setTimeout(() => setConfirmDelete(false), 2500);
-                }
-              }}
+          {pickerOpen && (
+            <div
+              ref={pickerRef}
+              className="glass-float flex animate-in fade-in-0 zoom-in-95 gap-0.5 rounded-full border border-border/60 px-1.5 py-1 duration-150"
             >
-              <Icon name="close" size={14} />
-            </BubbleAction>
+              {QUICK_EMOJI.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className="rounded-full px-1 text-[15px] transition-transform hover:scale-125"
+                  onClick={() => {
+                    setPickerOpen(false);
+                    onReact(m, k);
+                  }}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
           )}
-        </div>
-        </div>
-      )}
-
-      {pickerOpen && m.event_id && (
-        <div
-          ref={pickerRef}
-          className={
-            "glass-float absolute bottom-[calc(50%+20px)] z-[3] flex animate-in fade-in-0 zoom-in-95 gap-0.5 rounded-full border border-border/60 px-1.5 py-1 duration-150 " +
-            (own ? "right-full mr-1.5" : "left-full ml-1.5")
-          }
-        >
-          {QUICK_EMOJI.map((k) => (
-            <button
-              key={k}
-              type="button"
-              className="rounded-full px-1 text-[15px] hover:scale-125"
-              onClick={() => {
-                setPickerOpen(false);
-                onReact(m, k);
-              }}
-            >
-              {k}
-            </button>
-          ))}
+          <div className="glass-float flex items-center gap-0.5 rounded-full border border-border/60 px-1 py-0.5">
+            <BubbleAction title="React" data-picker-trigger onClick={() => setPickerOpen((v) => !v)}>
+              <Icon name="emoji" size={14} />
+            </BubbleAction>
+            <BubbleAction title="Reply" onClick={() => onReply(m)}>
+              <Icon name="back" size={14} />
+            </BubbleAction>
+            {own && (
+              <BubbleAction title="Edit" onClick={() => onEdit(m)}>
+                <Icon name="compose" size={14} />
+              </BubbleAction>
+            )}
+            {own && (
+              <BubbleAction
+                title={confirmDelete ? "Click again to delete" : "Delete"}
+                danger={confirmDelete}
+                onClick={() => {
+                  if (confirmDelete) {
+                    setConfirmDelete(false);
+                    onDelete(m);
+                  } else {
+                    setConfirmDelete(true);
+                    setTimeout(() => setConfirmDelete(false), 2500);
+                  }
+                }}
+              >
+                <Icon name="close" size={14} />
+              </BubbleAction>
+            )}
+          </div>
         </div>
       )}
     </div>

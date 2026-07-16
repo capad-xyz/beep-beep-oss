@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Icon } from "@/components/Icon";
+import { Logo } from "@/components/Logo";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Custom titlebar (the window runs with decorations:false). Windows layout:
@@ -77,7 +77,7 @@ export function TitleBar() {
       <div data-tauri-drag-region className="pointer-events-none flex items-center gap-2.5 pl-3.5">
         <span className="relative flex h-6 w-6 items-center justify-center overflow-hidden rounded-[7px] bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1">
           <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent" />
-          <Icon name="chat" size={13} strokeWidth={2.2} />
+          <Logo size={15} className="relative" />
         </span>
         <span className="micro text-ink-soft">
           Dooper

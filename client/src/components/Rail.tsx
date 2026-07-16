@@ -1,5 +1,6 @@
 import type { Account } from "@/bindings/Account";
 import { Icon } from "@/components/Icon";
+import { Logo } from "@/components/Logo";
 import { initials } from "@/lib/format";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -39,7 +40,7 @@ export function Rail({
             className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-[12px] bg-gradient-to-b from-[#a34a55] to-oxblood-ink text-white shadow-sh1 hover:shadow-sh2"
           >
             <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent" />
-            <Icon name="chat" />
+            <Logo size={24} className="relative" />
           </button>
         </TooltipTrigger>
         <TooltipContent side="right">All chats</TooltipContent>
